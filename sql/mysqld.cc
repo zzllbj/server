@@ -4088,6 +4088,9 @@ static int init_common_variables()
     /* MyISAM requires two file handles per table. */
     wanted_files= (10 + max_connections + extra_max_connections +
                    tc_size * 2);
+#if defined(HAVE_POOL_OF_THREADS) && !defined(__WIN__)
+    wanted_files+= threadpool_size;
+#endif
     /*
       We are trying to allocate no less than max_connections*5 file
       handles (i.e. we are trying to set the limit so that they will
