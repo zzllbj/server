@@ -9669,6 +9669,8 @@ Item *Item_cache_int::convert_to_basic_const_item(THD *thd)
 {
   Item *new_item;
   DBUG_ASSERT(value_cached || example != 0);
+  if (!value_cached)
+    cache_value();
   new_item= null_value ?
             (Item*) new (thd->mem_root) Item_null(thd) :
 	    (Item*) new (thd->mem_root) Item_int(thd, val_int(), max_length);
@@ -9832,6 +9834,8 @@ Item *Item_cache_temporal::convert_to_basic_const_item(THD *thd)
 {
   Item *new_item;
   DBUG_ASSERT(value_cached || example != 0);
+  if (!value_cached)
+    cache_value();
   if (null_value)
     new_item= (Item*) new (thd->mem_root) Item_null(thd);
   else
@@ -9897,6 +9901,8 @@ Item *Item_cache_real::convert_to_basic_const_item(THD *thd)
 {
   Item *new_item;
   DBUG_ASSERT(value_cached || example != 0);
+  if (!value_cached)
+    cache_value();
   new_item= null_value ?
             (Item*) new (thd->mem_root) Item_null(thd) :
 	    (Item*) new (thd->mem_root) Item_float(thd, val_real(),
@@ -9960,6 +9966,8 @@ Item *Item_cache_decimal::convert_to_basic_const_item(THD *thd)
 {
   Item *new_item;
   DBUG_ASSERT(value_cached || example != 0);
+  if (!value_cached)
+    cache_value();
   if (null_value)
     new_item= (Item*) new (thd->mem_root) Item_null(thd);
   else
@@ -10055,6 +10063,8 @@ Item *Item_cache_str::convert_to_basic_const_item(THD *thd)
 {
   Item *new_item;
   DBUG_ASSERT(value_cached || example != 0);
+  if (!value_cached)
+    cache_value();
   if (null_value)
     new_item= (Item*) new (thd->mem_root) Item_null(thd);
   else
