@@ -24,7 +24,21 @@ if(!$log_error_)
 
 # Assign env variable LOG_ERROR
 let LOG_ERROR=$log_error_;
-
+let FILE_STORAGE= $MYSQLTEST_VARDIR/log/rpl_find_row_debug.txt;
+perl;
+  use strict;
+  my $temp_storage= $ENV{'FILE_STORAGE'} or die "FILE_STORAGE not set";
+  open(my $STORAGE,'>', "$temp_storage") or die("Unable to open $temp_storage: $!\n");
+  my $log_error= $ENV{'LOG_ERROR'} or die "LOG_ERROR not set";
+  open(LOG, "$log_error") or die("Unable to open $log_error: $!\n");
+  my $upd_count = () = grep(/The slave is applying a ROW event on behalf of an UPDATE statement on table t1 and is currently taking a considerable amount/g,<LOG>);
+  seek(LOG, 0, 0) or die "Can't seek to beginning of file: $!";
+  my $del_count = () = grep(/The slave is applying a ROW event on behalf of a DELETE statement on table t1 and is currently taking a considerable amount/g,<LOG>);
+  print $STORAGE "$upd_count\n";
+  print $STORAGE "$del_count\n";
+  close(STORAGE);
+  close(LOG);
+EOF
 # force printing the notes to the error log
 SET GLOBAL debug_dbug="d,inject_long_find_row_note";
 --source include/start_slave.inc
@@ -44,13 +58,24 @@ DROP TABLE t1;
 --echo # Check if any note related to long DELETE_ROWS and UPDATE_ROWS appears in the error log
 perl;
   use strict;
+  my $temp_storage= $ENV{'FILE_STORAGE'} or die "FILE_STORAGE not set";
+  open(my $STORAGE, '<', "$temp_storage") or die("Unable to open $temp_storage: $!\n");
   my $log_error= $ENV{'LOG_ERROR'} or die "LOG_ERROR not set";
-  open(FILE, "$log_error") or die("Unable to open $log_error: $!\n");
-  my $upd_count = () = grep(/The slave is applying a ROW event on behalf of an UPDATE statement on table t1 and is currently taking a considerable amount/g,<FILE>);
-  seek(FILE, 0, 0) or die "Can't seek to beginning of file: $!";
-  my $del_count = () = grep(/The slave is applying a ROW event on behalf of a DELETE statement on table t1 and is currently taking a considerable amount/g,<FILE>);
+  open(LOG, "$log_error") or die("Unable to open $log_error: $!\n");
+  my $upd_count = () = grep(/The slave is applying a ROW event on behalf of an UPDATE statement on table t1 and is currently taking a considerable amount/g,<LOG>);
+  seek(LOG, 0, 0) or die "Can't seek to beginning of file: $!";
+  my $del_count = () = grep(/The slave is applying a ROW event on behalf of a DELETE statement on table t1 and is currently taking a considerable amount/g,<LOG>);
+  my $row= <$STORAGE>;
+  chomp $row;
+  my $initial_upd_count= $row;
+  $row= <$STORAGE>;
+  chomp $row;
+  my $initial_del_count= $row;
+  $upd_count= $upd_count - $initial_upd_count;
+  $del_count= $del_count - $initial_del_count;
   print "Occurrences: update=$upd_count, delete=$del_count\n";
-  close(FILE);
+  close(LOG);
+  close(STORAGE);
 EOF
 
 # cleanup
