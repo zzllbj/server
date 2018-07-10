@@ -4,3 +4,7 @@
 [submodule "storage/rocksdb/rocksdb"]
 	path = storage/rocksdb/rocksdb
 	url = https://github.com/facebook/rocksdb.git
+[submodule "columnstore"]
+	path = columnstore
+	url = https://github.com/drrtuy/mariadb-columnstore-engine
+	branch = MCOL-1532

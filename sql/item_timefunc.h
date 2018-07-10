@@ -1068,6 +1068,7 @@ public:
   bool need_parentheses_in_default() { return true; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_char_typecast>(thd, mem_root, this); }
+  uint get_cast_length() { return cast_length; }
 };
 
 
@@ -1154,6 +1155,7 @@ public:
   const char *func_name() const { return "add_time"; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_add_time>(thd, mem_root, this); }
+  int get_sign() { return sign; }
 };
 
 class Item_func_timediff :public Item_timefunc
@@ -1228,6 +1230,7 @@ public:
   virtual void print(String *str, enum_query_type query_type);
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_timestamp_diff>(thd, mem_root, this); }
+  const interval_type get_int_type() { return int_type; };
 };
 
 

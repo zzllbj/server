@@ -1593,6 +1593,7 @@ public:
     }
     return clone;
   } 
+  int get_first_expr_num() { return first_expr_num; }
 };
 
 /*
@@ -1997,6 +1998,7 @@ public:
   
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_like>(thd, mem_root, this); }
+  bool is_negated() { return negated; }
 };
 
 

@@ -579,6 +579,7 @@ public:
   void mark_as_window_func_sum_expr() { window_func_sum_expr_flag= true; }
   bool is_window_func_sum_expr() { return window_func_sum_expr_flag; }
   virtual void setup_caches(THD *thd) {};
+  Item **get_orig_args() { return orig_args; }
 };
 
 
@@ -1687,6 +1688,11 @@ public:
     { context= (Name_resolution_context *)cntx; return FALSE; }
   Item *get_copy(THD *thd, MEM_ROOT *mem_root)
   { return get_item_copy<Item_func_group_concat>(thd, mem_root, this); }
+  bool is_distinct() { return distinct; }
+  uint count_field() { return arg_count_field; }
+  uint order_field() { return arg_count_order; }
+  String* str_separator() { return separator; }
+  ORDER** get_order() { return order; }
 };
 
 #endif /* ITEM_SUM_INCLUDED */
