@@ -156,6 +156,10 @@ UNIV_INTERN fil_system_t*	fil_system	= NULL;
 UNIV_INTERN extern uint srv_fil_crypt_rotate_key_age;
 UNIV_INTERN extern ib_mutex_t fil_crypt_threads_mutex;
 
+/** If it is enabled then innodb rotation thread should avoid the
+opening of page 0 for the tablespace. */
+UNIV_INTERN extern my_bool srv_encrypt_tables_deferred;
+
 /** Determine if user has explicitly disabled fsync(). */
 # define fil_buffering_disabled(s)	\
 	((s)->purpose == FIL_TYPE_TABLESPACE	\
@@ -1324,12 +1328,6 @@ fil_space_detach(
 		UT_LIST_REMOVE(fil_system->unflushed_spaces, space);
 	}
 
-	if (space->is_in_rotation_list) {
-		space->is_in_rotation_list = false;
-
-		UT_LIST_REMOVE(fil_system->rotation_list, space);
-	}
-
 	UT_LIST_REMOVE(fil_system->space_list, space);
 
 	ut_a(space->magic_n == FIL_SPACE_MAGIC_N);
@@ -1548,23 +1546,7 @@ fil_space_create(
 		fil_system->max_assigned_id = id;
 	}
 
-	/* Inform key rotation that there could be something
-	to do */
-	if (purpose == FIL_TYPE_TABLESPACE
-	    && !srv_fil_crypt_rotate_key_age && fil_crypt_threads_event &&
-	    (mode == FIL_ENCRYPTION_ON || mode == FIL_ENCRYPTION_OFF ||
-		    srv_encrypt_tables)) {
-		/* Key rotation is not enabled, need to inform background
-		encryption threads. */
-		UT_LIST_ADD_LAST(fil_system->rotation_list, space);
-		space->is_in_rotation_list = true;
-		mutex_exit(&fil_system->mutex);
-		mutex_enter(&fil_crypt_threads_mutex);
-		os_event_set(fil_crypt_threads_event);
-		mutex_exit(&fil_crypt_threads_mutex);
-	} else {
-		mutex_exit(&fil_system->mutex);
-	}
+	mutex_exit(&fil_system->mutex);
 
 	return(space);
 }
@@ -1901,7 +1883,6 @@ fil_init(
 
 	UT_LIST_INIT(fil_system->LRU, &fil_node_t::LRU);
 	UT_LIST_INIT(fil_system->space_list, &fil_space_t::space_list);
-	UT_LIST_INIT(fil_system->rotation_list, &fil_space_t::rotation_list);
 	UT_LIST_INIT(fil_system->unflushed_spaces,
 		     &fil_space_t::unflushed_spaces);
 	UT_LIST_INIT(fil_system->named_spaces, &fil_space_t::named_spaces);
@@ -6114,90 +6095,6 @@ fil_space_next(fil_space_t* prev_space)
 		if (space != NULL) {
 			space->n_pending_ops++;
 		}
-	}
-
-	mutex_exit(&fil_system->mutex);
-
-	return(space);
-}
-
-/**
-Remove space from key rotation list if there are no more
-pending operations.
-@param[in,out]	space		Tablespace */
-static
-void
-fil_space_remove_from_keyrotation(fil_space_t* space)
-{
-	ut_ad(mutex_own(&fil_system->mutex));
-	ut_ad(space);
-
-	if (space->n_pending_ops == 0 && space->is_in_rotation_list) {
-		space->is_in_rotation_list = false;
-		ut_a(UT_LIST_GET_LEN(fil_system->rotation_list) > 0);
-		UT_LIST_REMOVE(fil_system->rotation_list, space);
-	}
-}
-
-
-/** Return the next fil_space_t from key rotation list.
-Once started, the caller must keep calling this until it returns NULL.
-fil_space_acquire() and fil_space_release() are invoked here which
-blocks a concurrent operation from dropping the tablespace.
-@param[in]	prev_space	Pointer to the previous fil_space_t.
-If NULL, use the first fil_space_t on fil_system->space_list.
-@return pointer to the next fil_space_t.
-@retval NULL if this was the last*/
-fil_space_t*
-fil_space_keyrotate_next(
-	fil_space_t*	prev_space)
-{
-	fil_space_t* space = prev_space;
-	fil_space_t* old   = NULL;
-
-	mutex_enter(&fil_system->mutex);
-
-	if (UT_LIST_GET_LEN(fil_system->rotation_list) == 0) {
-		if (space) {
-			ut_ad(space->n_pending_ops > 0);
-			space->n_pending_ops--;
-			fil_space_remove_from_keyrotation(space);
-		}
-		mutex_exit(&fil_system->mutex);
-		return(NULL);
-	}
-
-	if (prev_space == NULL) {
-		space = UT_LIST_GET_FIRST(fil_system->rotation_list);
-
-		/* We can trust that space is not NULL because we
-		checked list length above */
-	} else {
-		ut_ad(space->n_pending_ops > 0);
-
-		/* Move on to the next fil_space_t */
-		space->n_pending_ops--;
-
-		old = space;
-		space = UT_LIST_GET_NEXT(rotation_list, space);
-
-		fil_space_remove_from_keyrotation(old);
-	}
-
-	/* Skip spaces that are being created by fil_ibd_create(),
-	or dropped or truncated. Note that rotation_list contains only
-	space->purpose == FIL_TYPE_TABLESPACE. */
-	while (space != NULL
-	       && (UT_LIST_GET_LEN(space->chain) == 0
-		   || space->is_stopping())) {
-
-		old = space;
-		space = UT_LIST_GET_NEXT(rotation_list, space);
-		fil_space_remove_from_keyrotation(old);
-	}
-
-	if (space != NULL) {
-		space->n_pending_ops++;
 	}
 
 	mutex_exit(&fil_system->mutex);

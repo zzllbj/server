@@ -256,6 +256,7 @@ static char*	innodb_version_str = (char*) INNODB_VERSION_STR;
 extern uint srv_fil_crypt_rotate_key_age;
 extern uint srv_n_fil_crypt_iops;
 
+extern my_bool srv_encrypt_tables_deferred;
 extern my_bool srv_immediate_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
@@ -21142,6 +21143,13 @@ static MYSQL_SYSVAR_UINT(encryption_rotation_iops, srv_n_fil_crypt_iops,
 			 innodb_encryption_rotation_iops_update,
 			 srv_n_fil_crypt_iops, 0, UINT_MAX32, 0);
 
+static MYSQL_SYSVAR_BOOL(encrypt_tables_deferred, srv_encrypt_tables_deferred,
+			 PLUGIN_VAR_OPCMDARG,
+			 "It avoids the opening of page 0 for rotation thread. "
+			 "Does encryption/decryption of already opened table "
+			 "depends on innodb_encrypt_tables variable.",
+			 NULL, NULL, FALSE);
+
 static MYSQL_SYSVAR_BOOL(scrub_log, srv_scrub_log,
   PLUGIN_VAR_OPCMDARG | PLUGIN_VAR_READONLY,
   "Enable background redo log (ib_logfile0, ib_logfile1...) scrubbing",
@@ -21411,6 +21419,7 @@ static struct st_mysql_sys_var* innobase_system_variables[]= {
   MYSQL_SYSVAR(encryption_threads),
   MYSQL_SYSVAR(encryption_rotate_key_age),
   MYSQL_SYSVAR(encryption_rotation_iops),
+  MYSQL_SYSVAR(encrypt_tables_deferred),
   MYSQL_SYSVAR(scrub_log),
   MYSQL_SYSVAR(scrub_log_speed),
   MYSQL_SYSVAR(encrypt_log),

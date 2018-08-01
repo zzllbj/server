@@ -1,0 +1,45 @@
+-- source include/have_innodb.inc
+-- source include/not_embedded.inc
+-- source include/have_example_key_management_plugin.inc
+
+--echo # Restart the server with encryption and
+--echo # innodb_encrypt_tables_deferred enabled.
+
+CREATE TABLE t1 (pk INT PRIMARY KEY, c VARCHAR(256))engine=innodb;
+INSERT INTO t1 VALUES(1, "MariaDB");
+
+let $restart_parameters= --innodb_encrypt_tables=ON --innodb_encryption_threads=1 --innodb_encryption_rotate_key_age=0 --innodb_buffer_pool_load_at_startup=0 --innodb_encrypt_tables_deferred=1;
+--source include/restart_mysqld.inc
+
+CREATE TABLE t2(pk INT PRIMARY KEY)ENGINE=InnoDB;
+INSERT INTO t2 VALUES(1);
+
+SELECT * FROM t1 LIMIT 1;
+
+
+--echo # Wait until encryption threads have encrypted all tablespaces
+
+--let $tables_count= `select count(*) + 1 from information_schema.tables where engine = 'InnoDB'`
+--let $wait_timeout= 600
+--let $wait_condition=SELECT COUNT(*) = $tables_count FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 AND ROTATING_OR_FLUSHING = 0;
+--source include/wait_condition.inc
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+--echo # Now turn off encryption and wait for threads to decrypt all tablespaces
+SET GLOBAL innodb_encryption_rotate_key_age = 1;
+SET GLOBAL innodb_encrypt_tables = off;
+
+--let $wait_condition=SELECT COUNT(*) = $tables_count FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND ROTATING_OR_FLUSHING = 0;
+--source include/wait_condition.inc
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+--let $restart_parameters=
+-- source include/restart_mysqld.inc
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+DROP TABLE t2, t1;

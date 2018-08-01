@@ -93,6 +93,8 @@ static ib_mutex_t crypt_stat_mutex;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
 
+UNIV_INTERN my_bool srv_encrypt_tables_deferred;
+
 /***********************************************************************
 Check if a key needs rotation given a key_state
 @param[in]	crypt_data		Encryption information
@@ -1465,16 +1467,18 @@ fil_crypt_find_space_to_rotate(
 		state->space = NULL;
 	}
 
-	/* If key rotation is enabled (default) we iterate all tablespaces.
-	If key rotation is not enabled we iterate only the tablespaces
-	added to keyrotation list. */
-	if (srv_fil_crypt_rotate_key_age) {
-		state->space = fil_space_next(state->space);
-	} else {
-		state->space = fil_space_keyrotate_next(state->space);
-	}
+	state->space = fil_space_next(state->space);
 
 	while (!state->should_shutdown() && state->space) {
+
+		/* If innodb_encrypt_tables_deferred is enabled then
+		no need to read page 0 if it is not yet read. */
+		if (srv_encrypt_tables_deferred
+		    && !(state->space->size || state->space->crypt_data)) {
+			state->space = fil_space_next(state->space);
+			continue;
+		}
+
 		/* If there is no crypt data and we have not yet read
 		page 0 for this tablespace, we need to read it before
 		we can continue. */
@@ -1490,11 +1494,7 @@ fil_crypt_find_space_to_rotate(
 			return true;
 		}
 
-		if (srv_fil_crypt_rotate_key_age) {
-			state->space = fil_space_next(state->space);
-		} else {
-			state->space = fil_space_keyrotate_next(state->space);
-		}
+		state->space = fil_space_next(state->space);
 	}
 
 	/* if we didn't find any space return iops */
@@ -2161,9 +2161,9 @@ DECLARE_THREAD(fil_crypt_thread)(
 			}
 
 			if (recheck) {
-				/* check recheck here, after sleep, so
-				* that we don't busy loop while when one thread is starting
-				* a space*/
+				/* check recheck here, after sleep, so that we
+				don't busy loop while when one thread is
+				starting a space */
 				break;
 			}
 

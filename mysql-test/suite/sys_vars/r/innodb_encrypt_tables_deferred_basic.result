@@ -1,0 +1,17 @@
+0 Expected
+SELECT @@GLOBAL.innodb_encrypt_tables_deferred;
+@@GLOBAL.innodb_encrypt_tables_deferred
+0
+SET @@GLOBAL.innodb_encrypt_tables_deferred=123;
+ERROR 42000: Variable 'innodb_encrypt_tables_deferred' can't be set to the value of '123'
+SET GLOBAL innodb_encrypt_tables_deferred='foo';
+ERROR 42000: Variable 'innodb_encrypt_tables_deferred' can't be set to the value of 'foo'
+SET GLOBAL innodb_encrypt_tables_deferred=ON;
+SELECT @@global.innodb_encrypt_tables_deferred;
+@@global.innodb_encrypt_tables_deferred
+1
+SET GLOBAL innodb_encrypt_tables_deferred=OFF;
+SELECT @@global.innodb_encrypt_tables_deferred;
+@@global.innodb_encrypt_tables_deferred
+0
+SET GLOBAL innodb_encrypt_tables_deferred=default;

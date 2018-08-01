@@ -1,0 +1,22 @@
+--source include/have_innodb.inc
+
+# Display default value
+--echo 0 Expected
+SELECT @@GLOBAL.innodb_encrypt_tables_deferred;
+
+# Check if value can be set
+--error ER_WRONG_VALUE_FOR_VAR
+SET @@GLOBAL.innodb_encrypt_tables_deferred=123;
+
+-- error ER_WRONG_VALUE_FOR_VAR
+SET GLOBAL innodb_encrypt_tables_deferred='foo';
+
+# Check that changing value works and that setting the same value again
+# is as expected
+SET GLOBAL innodb_encrypt_tables_deferred=ON;
+SELECT @@global.innodb_encrypt_tables_deferred;
+
+SET GLOBAL innodb_encrypt_tables_deferred=OFF;
+SELECT @@global.innodb_encrypt_tables_deferred;
+
+SET GLOBAL innodb_encrypt_tables_deferred=default;
