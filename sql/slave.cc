@@ -6198,7 +6198,7 @@ static int queue_event(Master_info* mi,const char* buf, ulong event_len)
   DBUG_EXECUTE_IF("dbug.rows_events_to_delay_relay_logging",
                   if ((buf[EVENT_TYPE_OFFSET] == WRITE_ROWS_EVENT_V1 ||
                        buf[EVENT_TYPE_OFFSET] == WRITE_ROWS_EVENT) &&
-                      ++dbug_rows_event_count == 2)
+                      ++dbug_rows_event_count % 2 == 0 )
                   {
                     const char act[]=
                       "now SIGNAL start_sql_thread "
