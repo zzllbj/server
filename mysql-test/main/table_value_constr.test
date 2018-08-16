@@ -1075,3 +1075,16 @@ DELIMITER ;|
 
 --error ER_EMPTY_ROW_IN_TVC
 with t as (values (),()) select 1 from t;
+
+--echo #
+--echo # MDEV-16930: expression in the first row of TVC specifying derived table
+--echo #
+
+VALUES(1+1,2);
+SELECT * FROM (VALUES(1+1,2)) t;
+PREPARE stmt FROM "SELECT * FROM (VALUES(1+1,2)) t";
+EXECUTE stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+--echo # End of 10.3 tests

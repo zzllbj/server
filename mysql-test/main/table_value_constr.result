@@ -11,7 +11,7 @@ values (1,2), (3,4), (5.6,0);
 3.0	4
 5.6	0
 values ("abc", "def");
-abc	def
+"abc"	"def"
 abc	def
 # UNION that uses VALUES structure(s)
 select 1,2
@@ -92,7 +92,7 @@ we	q
 values ("ab", "cdf")
 union
 select "ab","cdf";
-ab	cdf
+"ab"	"cdf"
 ab	cdf
 values (1,2)
 union
@@ -2097,3 +2097,21 @@ v
 #
 with t as (values (),()) select 1 from t;
 ERROR HY000: Row with no elements is not allowed in table value constructor in this context
+#
+# MDEV-16930: expression in the first row of TVC specifying derived table
+#
+VALUES(1+1,2);
+1+1	2
+2	2
+SELECT * FROM (VALUES(1+1,2)) t;
+1+1	2
+2	2
+PREPARE stmt FROM "SELECT * FROM (VALUES(1+1,2)) t";
+EXECUTE stmt;
+1+1	2
+2	2
+EXECUTE stmt;
+1+1	2
+2	2
+DEALLOCATE PREPARE stmt;
+# End of 10.3 tests
