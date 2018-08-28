@@ -346,8 +346,32 @@ enum field_visibility_t {
   INVISIBLE_FULL
 };
 
-#define INVISIBLE_MAX_BITS 3
+#define INVISIBLE_MAX_BITS              3
+/* We will store the info into 3rd bit if field is hash field */
+#define HASH_FIELD_MASK                 15
+#define HASH_FIELD_MASK_SHIFT           4
+#define HA_HASH_FIELD_LENGTH            8
+#define HA_HASH_KEY_LENGTH_WITHOUT_NULL 8
+#define HA_HASH_KEY_PART_LENGTH         4 + 8 // 4 for length , 8 for portable size of char ptr
 
+const LEX_CSTRING ha_hash_str           {STRING_WITH_LEN("HASH")};
+
+
+int find_field_pos_in_hash(Item *hash_item, const char * field_name);
+
+int fields_in_hash_str(Item *hash_item);
+
+Field * field_ptr_in_hash_str(Item *hash_item, int index);
+
+void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str);
+
+void create_update_handler(THD *thd, TABLE *table);
+
+void delete_update_handler(THD *thd, TABLE *table);
+
+void setup_table_hash(TABLE *table);
+
+void re_setup_table(TABLE *table);
 
 /**
   Category of table found in the table share.
@@ -1105,6 +1129,17 @@ public:
   THD	*in_use;                        /* Which thread uses this */
 
   uchar *record[3];			/* Pointer to records */
+  /* record buf to resolve hash collisions for long UNIQUE constraints */
+  uchar *check_unique_buf;
+  handler *update_handler;  /* Handler used in case of update */
+  /*
+     In the case of write row for long unique we are unable of find
+     Whick key is voilated. Because we in case of duplicate hash we never reach
+     handler write_row function. So print_error will always print that
+     key 0 is voilated. We store which key is voilated in this variable
+     by default this should be initialized to -1
+   */
+  int dupp_hash_key;
   uchar *write_row_record;		/* Used as optimisation in
 					   THD::write_row */
   uchar *insert_values;                  /* used by INSERT ... UPDATE */
@@ -2929,6 +2964,7 @@ void append_unescaped(String *res, const char *pos, size_t length);
 void prepare_frm_header(THD *thd, uint reclength, uchar *fileinfo,
                         HA_CREATE_INFO *create_info, uint keys, KEY *key_info);
 const char *fn_frm_ext(const char *name);
+void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str);
 
 /* Check that the integer is in the internal */
 static inline int set_zone(int nr,int min_zone,int max_zone)

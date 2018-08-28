@@ -2306,7 +2306,7 @@ int show_create_table(THD *thd, TABLE_LIST *table_list, String *packet,
       */
       packet->append(STRING_WITH_LEN("PRIMARY KEY"));
     }
-    else if (key_info->flags & HA_NOSAME)
+    else if (key_info->flags & HA_NOSAME || key_info->flags & HA_LONG_UNIQUE_HASH)
       packet->append(STRING_WITH_LEN("UNIQUE KEY "));
     else if (key_info->flags & HA_FULLTEXT)
       packet->append(STRING_WITH_LEN("FULLTEXT KEY "));
@@ -6593,8 +6593,13 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
             table->field[9]->store((longlong) records, TRUE);
             table->field[9]->set_notnull();
           }
-          const char *tmp= show_table->file->index_type(i);
-          table->field[13]->store(tmp, strlen(tmp), cs);
+          if (key->flags & HA_LONG_UNIQUE_HASH)
+            table->field[13]->store(STRING_WITH_LEN("HASH_INDEX"), cs);
+          else
+          {
+            const char *tmp= show_table->file->index_type(i);
+            table->field[13]->store(tmp, strlen(tmp), cs);
+          }
         }
         if (!(key_info->flags & HA_FULLTEXT) &&
             (key_part->field &&

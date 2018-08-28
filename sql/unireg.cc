@@ -101,6 +101,8 @@ static uchar *extra2_write_field_properties(uchar *pos,
     uchar flags= cf->invisible;
     if (cf->flags & VERS_UPDATE_UNVERSIONED_FLAG)
       flags|= VERS_OPTIMIZED_UPDATE;
+    if (cf->flags & LONG_UNIQUE_HASH_FIELD)
+      flags|= EXTRA2_LONG_UNIQUE_HASH_FIELD;
     *pos++= flags;
   }
   return pos;

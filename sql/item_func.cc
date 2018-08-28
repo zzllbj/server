@@ -1719,6 +1719,36 @@ bool Item_func_mod::fix_length_and_dec()
 }
 
 
+longlong  Item_func_hash::val_int()
+{
+  unsigned_flag= true;
+  ulong nr1= 1,nr2= 4;
+  CHARSET_INFO *cs;
+  String * str;
+  for(uint i= 0;i<arg_count;i++)
+  {
+    str = args[i]->val_str();
+    if(args[i]->null_value)
+    {
+      null_value= 1;
+      return 0;
+    }
+   calc_hash_for_unique(nr1, nr2, str);
+  }
+  null_value= 0;
+  return   (longlong)nr1;
+}
+
+
+void  Item_func_hash::fix_length_and_dec()
+{
+  maybe_null= 1;
+  decimals= 0;
+  max_length= 8;
+}
+
+
+
 double Item_func_neg::real_op()
 {
   double value= args[0]->val_real();

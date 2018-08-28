@@ -543,6 +543,7 @@ public:
   LEX_CSTRING name;                             /* Name of constraint */
   /* see VCOL_* (VCOL_FIELD_REF, ...) */
   uint flags;
+  LEX_CSTRING hash_expr;
 
   Virtual_column_info()
   : vcol_type((enum_vcol_info_type)VCOL_TYPE_NONE),
@@ -552,8 +553,14 @@ public:
   {
     name.str= NULL;
     name.length= 0;
+    hash_expr.str= NULL;
+    hash_expr.length= 0;
   };
-  ~Virtual_column_info() {}
+  ~Virtual_column_info()
+  {
+    if (!hash_expr.length)
+      my_free((void *)hash_expr.str);
+  }
   enum_vcol_info_type get_vcol_type() const
   {
     return vcol_type;
@@ -687,7 +694,7 @@ public:
     GEOM_MULTIPOINT = 4, GEOM_MULTILINESTRING = 5, GEOM_MULTIPOLYGON = 6,
     GEOM_GEOMETRYCOLLECTION = 7
   };
-  enum imagetype { itRAW, itMBR};
+  enum imagetype { itRAW, itMBR, itHASH};
 
   utype		unireg_check;
   uint32	field_length;		// Length of field
@@ -1083,7 +1090,7 @@ public:
   virtual int cmp(const uchar *,const uchar *)=0;
   virtual int cmp_binary(const uchar *a,const uchar *b, uint32 max_length=~0U)
   { return memcmp(a,b,pack_length()); }
-  virtual int cmp_offset(uint row_offset)
+  virtual int cmp_offset(long row_offset)
   { return cmp(ptr,ptr+row_offset); }
   virtual int cmp_binary_offset(uint row_offset)
   { return cmp_binary(ptr, ptr+row_offset); };
@@ -4311,7 +4318,7 @@ public:
   int key_cmp(const uchar *a, const uchar *b)
   { return cmp_binary((uchar *) a, (uchar *) b); }
   int key_cmp(const uchar *str, uint length);
-  int cmp_offset(uint row_offset);
+  int cmp_offset(long row_offset);
   bool update_min(Field *min_val, bool force_update)
   { 
     longlong val= val_int();
