@@ -2454,10 +2454,6 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
 
         field= key_part->field= share->field[key_part->fieldnr-1];
         key_part->type= field->key_type();
-        if (keyinfo->flags & HA_LONG_UNIQUE_HASH
-            &&(key_part->length > handler_file->max_key_part_length()
-             || key_part->length == 0))
-          key_part->store_length= HA_HASH_KEY_PART_LENGTH;
         /* Invisible Full is currently used by long uniques */
         if ((field->invisible ==  INVISIBLE_USER ||
                 field->invisible == INVISIBLE_SYSTEM )&& !field->vers_sys_field())

@@ -352,7 +352,7 @@ enum field_visibility_t {
 #define HASH_FIELD_MASK_SHIFT           4
 #define HA_HASH_FIELD_LENGTH            8
 #define HA_HASH_KEY_LENGTH_WITHOUT_NULL 8
-#define HA_HASH_KEY_PART_LENGTH         4 + 8 // 4 for length , 8 for portable size of char ptr
+#define HA_HASH_KEY_LENGTH_WITH_NULL    9
 
 const LEX_CSTRING ha_hash_str           {STRING_WITH_LEN("HASH")};
 
