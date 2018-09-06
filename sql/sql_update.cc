@@ -401,6 +401,10 @@ int mysql_update(THD *thd,
   if (prune_partitions(thd, table, conds))
   {
     free_underlaid_joins(thd, select_lex);
+    //If we got error in SubSelect or because of any other reason
+    //Don't reset it (Mdev-5628)
+    if (thd->is_error())
+      DBUG_RETURN(0);
     my_ok(thd);				// No matching records
     DBUG_RETURN(0);
   }
