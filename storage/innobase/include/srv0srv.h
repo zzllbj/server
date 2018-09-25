@@ -188,9 +188,6 @@ struct srv_stats_t
 
 	/** Number of log scrub operations */
 	ulint_ctr_64_t		n_log_scrubs;
-
-	/** Number of spaces in keyrotation list */
-	ulint_ctr_64_t		key_rotation_list_length;
 };
 
 extern const char*	srv_main_thread_op_info;
@@ -756,6 +753,15 @@ enum srv_thread_type {
 					number must be biggest) */
 };
 
+/** Types of global encrypt status of all tablespace. */
+enum srv_crypt_status_t {
+	ALL_ENCRYPTED = 8,
+	ALL_DECRYPTED,
+	MIX_STATE
+};
+
+extern srv_crypt_status_t	srv_crypt_space_status;
+
 /*********************************************************************//**
 Boots Innobase server. */
 void
@@ -1074,7 +1080,6 @@ struct export_var_t{
 	ulint innodb_encryption_rotation_pages_flushed;
 	ulint innodb_encryption_rotation_estimated_iops;
 	int64_t innodb_encryption_key_requests;
-	int64_t innodb_key_rotation_list_length;
 
 	ulint innodb_scrub_page_reorganizations;
 	ulint innodb_scrub_page_splits;

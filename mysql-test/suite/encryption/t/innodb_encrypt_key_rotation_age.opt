@@ -1,0 +1,3 @@
+--innodb-tablespaces-encryption
+--innodb_encrypt_tables=ON
+--innodb_buffer_pool_load_at_startup=0

@@ -2583,6 +2583,19 @@ files_checked:
 	srv_startup_is_before_trx_rollback_phase = false;
 
 	if (!srv_read_only_mode) {
+
+		if (!create_new_db) {
+			srv_crypt_space_status = static_cast<srv_crypt_status_t>(
+					dict_hdr_get_crypt_status());
+		}
+
+		if (srv_crypt_space_status < ALL_ENCRYPTED
+		    && srv_crypt_space_status > MIX_STATE) {
+			ib::error() << "Unknown value " << srv_crypt_space_status
+			<<" stored as encrypt status in dictionary header page.\n";
+			return DB_ERROR;
+		}
+
 		/* Create the thread which watches the timeouts
 		for lock waits */
 		thread_handles[2 + SRV_MAX_N_IO_THREADS] = os_thread_create(

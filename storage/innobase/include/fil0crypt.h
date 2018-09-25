@@ -502,4 +502,11 @@ fil_space_verify_crypt_checksum(
 	ulint			offset)
 	MY_ATTRIBUTE((warn_unused_result));
 
+/** Verify whether the global encryption status variable and
+innodb_encrypt_tables in a encryption/decryption state.
+@retval true if srv_encrypt_space_status and innodb_encrypt_tables
+		both shows encryption/decryption state. */
+bool
+fil_crypt_valid_state();
+
 #endif /* fil0crypt_h */

@@ -167,11 +167,6 @@ struct fil_space_t {
 				unflushed_spaces */
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
-	/** other tablespaces needing key rotation */
-	UT_LIST_NODE_T(fil_space_t) rotation_list;
-	/** whether this tablespace needs key rotation */
-	bool		is_in_rotation_list;
-
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
 
@@ -472,6 +467,7 @@ fil_space_get(
 data space) is stored here; below we talk about tablespaces, but also
 the ib_logfiles form a 'space' and it is handled here */
 struct fil_system_t {
+
 	ib_mutex_t	mutex;		/*!< The mutex protecting the cache */
 	hash_table_t*	spaces;		/*!< The hash table of spaces in the
 					system; they are hashed on the space
@@ -514,14 +510,18 @@ struct fil_system_t {
 					record has been written since
 					the latest redo log checkpoint.
 					Protected only by log_sys->mutex. */
-	UT_LIST_BASE_NODE_T(fil_space_t) rotation_list;
-					/*!< list of all file spaces needing
-					key rotation.*/
 
 	ibool		space_id_reuse_warned;
 					/* !< TRUE if fil_space_create()
 					has issued a warning about
 					potential space_id reuse */
+
+	typedef std::set<uint, std::less<uint>, ut_allocator<uint> >
+							threads_list;
+
+	/** This variable is used to store all completed crypt threads list.
+	It is protected by fil_crypt_threads_mutex. */
+	threads_list	crypt_threads_list;
 };
 
 /** The tablespace memory cache. This variable is NULL before the module is
@@ -790,19 +790,6 @@ If NULL, use the first fil_space_t on fil_system->space_list.
 @retval NULL if this was the last  */
 fil_space_t*
 fil_space_next(
-	fil_space_t*	prev_space)
-	MY_ATTRIBUTE((warn_unused_result));
-
-/** Return the next fil_space_t from key rotation list.
-Once started, the caller must keep calling this until it returns NULL.
-fil_space_acquire() and fil_space_release() are invoked here which
-blocks a concurrent operation from dropping the tablespace.
-@param[in,out]	prev_space	Pointer to the previous fil_space_t.
-If NULL, use the first fil_space_t on fil_system->space_list.
-@return pointer to the next fil_space_t.
-@retval NULL if this was the last*/
-fil_space_t*
-fil_space_keyrotate_next(
 	fil_space_t*	prev_space)
 	MY_ATTRIBUTE((warn_unused_result));
 

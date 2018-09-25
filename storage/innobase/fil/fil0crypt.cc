@@ -93,6 +93,10 @@ static ib_mutex_t crypt_stat_mutex;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
 
+/** Variable for maintaining global encryption status of all tablespace.
+This is protected by fil_crypt_threads_mutex. */
+UNIV_INTERN srv_crypt_status_t 	srv_crypt_space_status = MIX_STATE;
+
 /***********************************************************************
 Check if a key needs rotation given a key_state
 @param[in]	crypt_data		Encryption information
@@ -918,7 +922,7 @@ fil_crypt_needs_rotation(
 
 	if (crypt_data->encryption == FIL_ENCRYPTION_DEFAULT
 	    && crypt_data->type == CRYPT_SCHEME_1
-	    && srv_encrypt_tables == 0 ) {
+	    && srv_encrypt_tables == 0) {
 		/* This is rotation encrypted => unencrypted */
 		return true;
 	}
@@ -1431,6 +1435,17 @@ fil_crypt_return_iops(
 	fil_crypt_update_total_stat(state);
 }
 
+/** Verify whether the both global encryption status variable and
+innodb_encrypt_tables are in encryption/decryption state.
+@retval true if srv_encrypt_space_status and innodb_encrypt_tables
+                both shows encryption/decryption state. */
+bool
+fil_crypt_valid_state()
+{
+	return (srv_crypt_space_status == ALL_ENCRYPTED && srv_encrypt_tables)
+		|| (srv_crypt_space_status == ALL_DECRYPTED && !srv_encrypt_tables);
+}
+
 /***********************************************************************
 Search for a space needing rotation
 @param[in,out]		key_state		Key state
@@ -1465,14 +1480,17 @@ fil_crypt_find_space_to_rotate(
 		state->space = NULL;
 	}
 
-	/* If key rotation is enabled (default) we iterate all tablespaces.
-	If key rotation is not enabled we iterate only the tablespaces
-	added to keyrotation list. */
-	if (srv_fil_crypt_rotate_key_age) {
-		state->space = fil_space_next(state->space);
-	} else {
-		state->space = fil_space_keyrotate_next(state->space);
+	if (srv_fil_crypt_rotate_key_age == 0) {
+		mutex_enter(&fil_crypt_threads_mutex);
+		bool is_valid = fil_crypt_valid_state();
+		mutex_exit(&fil_crypt_threads_mutex);
+		if (is_valid) {
+			fil_crypt_return_iops(state);
+			return false;
+		}
 	}
+
+	state->space = fil_space_next(state->space);
 
 	while (!state->should_shutdown() && state->space) {
 		/* If there is no crypt data and we have not yet read
@@ -1490,11 +1508,7 @@ fil_crypt_find_space_to_rotate(
 			return true;
 		}
 
-		if (srv_fil_crypt_rotate_key_age) {
-			state->space = fil_space_next(state->space);
-		} else {
-			state->space = fil_space_keyrotate_next(state->space);
-		}
+		state->space = fil_space_next(state->space);
 	}
 
 	/* if we didn't find any space return iops */
@@ -2186,6 +2200,12 @@ DECLARE_THREAD(fil_crypt_thread)(
 		while (!thr.should_shutdown() &&
 		       fil_crypt_find_space_to_rotate(&new_state, &thr, &recheck)) {
 
+			mutex_enter(&fil_crypt_threads_mutex);
+
+			fil_system->crypt_threads_list.erase(thr.thread_no);
+
+			mutex_exit(&fil_crypt_threads_mutex);
+
 			/* we found a space to rotate */
 			fil_crypt_start_rotate_space(&new_state, &thr);
 
@@ -2222,6 +2242,28 @@ DECLARE_THREAD(fil_crypt_thread)(
 
 			/* return iops */
 			fil_crypt_return_iops(&thr);
+		}
+
+		if (!recheck && !thr.should_shutdown()) {
+			mutex_enter(&fil_crypt_threads_mutex);
+
+			fil_system->crypt_threads_list.insert(thr.thread_no);
+
+			/* All crypt threads processed all existing tablespace. */
+			if ((fil_system->crypt_threads_list.size()
+				== srv_n_fil_crypt_threads_started)
+			    && !fil_crypt_valid_state()) {
+
+				if (srv_encrypt_tables) {
+					srv_crypt_space_status = ALL_ENCRYPTED;
+				} else {
+					srv_crypt_space_status = ALL_DECRYPTED;
+				}
+
+				dict_hdr_set_crypt_status(srv_crypt_space_status);
+			}
+
+			mutex_exit(&fil_crypt_threads_mutex);
 		}
 	}
 
@@ -2338,7 +2380,6 @@ fil_crypt_threads_init()
 		fil_crypt_threads_event = os_event_create(0);
 		mutex_create(LATCH_ID_FIL_CRYPT_THREADS_MUTEX,
 		     &fil_crypt_threads_mutex);
-
 		uint cnt = srv_n_fil_crypt_threads;
 		srv_n_fil_crypt_threads = 0;
 		fil_crypt_threads_inited = true;
