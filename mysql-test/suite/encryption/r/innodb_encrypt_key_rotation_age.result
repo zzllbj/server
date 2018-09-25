@@ -16,14 +16,10 @@ test/t1
 test/t2
 # Restart the server with innodb_encryption_rotate_key_age= 0
 create table t3 (f1 int not null)engine=innodb;
-SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION is NULL;
 NAME
-innodb_system
-mysql/innodb_index_stats
-mysql/innodb_table_stats
 test/t1
 test/t2
-test/t3
 # Wait until encryption threads have encrypted all tablespaces
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME

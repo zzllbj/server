@@ -32,7 +32,7 @@ let $restart_parameters= --innodb_encryption_threads=1 --innodb_encryption_rotat
 
 create table t3 (f1 int not null)engine=innodb;
 
-SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION is NULL;
 
 --echo # Wait until encryption threads have encrypted all tablespaces
 
