@@ -659,7 +659,7 @@ flush table t1;
 handler t1 read a prev;
 handler t1 close;
 --echo #
---echo # FLUSH TABLES WITH READ LOCK behaves like FLUSH TABLE.
+--echo # FLUSH TABLES WITH READ LOCK does not loose position
 --echo # 
 handler t1 open;
 handler t1 read a prev;

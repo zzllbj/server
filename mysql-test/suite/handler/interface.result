@@ -265,7 +265,7 @@ a	b
 flush tables with read lock;
 handler t1 read a next;
 a	b
-0	a
+2	c
 unlock tables;
 drop table t1;
 handler t1 read a next;

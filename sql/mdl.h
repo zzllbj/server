@@ -129,7 +129,6 @@ enum enum_mdl_type {
   */
   MDL_INTENTION_EXCLUSIVE= 0,
   /*
-  /*
     A shared metadata lock (S).
     To be used in cases when we are interested in object metadata only
     and there is no intention to access object data (e.g. for stored
