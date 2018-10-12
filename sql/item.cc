@@ -7419,7 +7419,15 @@ void Item_ref::make_field(Send_field *field)
 Item *Item_ref::get_tmp_table_item(THD *thd)
 {
   if (!result_field)
-    return (*ref)->get_tmp_table_item(thd);
+  {
+    if (!with_sum_func && !const_item())
+      return (*ref)->get_tmp_table_item(thd);
+    else
+    {
+      DBUG_ASSERT((*ref)->const_item() || (*ref)->with_sum_func);
+      return copy_or_same(thd);
+    }
+  }
 
   Item_field *item= new Item_field(result_field);
   if (item)

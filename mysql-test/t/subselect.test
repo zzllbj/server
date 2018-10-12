@@ -6075,4 +6075,25 @@ explain select * from t1 where (select max(b) from t2) = 10 and t1.a > 3;
 
 drop table t1,t2;
 
+--echo #
+--echo # MDEV-16207: Sig 11 on RHEL7 on Azure
+--echo #
+
+CREATE TABLE t2 (ser1 char(20)  NOT NULL, ids1 int NOT NULL, nm1 char(32)  NOT NULL);
+INSERT INTO t2 VALUES ('char1',1,'char2'),('char2',2,'char2');
+ 
+CREATE TABLE t3 (id2 int );
+INSERT INTO t3 VALUES (1),(2);
+ 
+CREATE TABLE t5 (nm1 varchar(255), ls1 varchar(64), state enum('Active','Inactive','Event'));
+ 
+
+SELECT * FROM
+(SELECT nm1,
+(SELECT max(t5.nm1) FROM t5 WHERE t5.ls1 = ser1 AND STATE = 'Active') AS types
+FROM t3 JOIN t2 ON ids1 = id2) AS t1
+ORDER BY nm1 ;
+
+drop table t2,t3,t5;
+
 --echo End of 5.5 tests

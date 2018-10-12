@@ -14705,6 +14705,8 @@ static Field *create_tmp_field_from_item(THD *thd, Item *item, TABLE *table,
   bool maybe_null= item->maybe_null;
   Field *new_field;
   LINT_INIT(new_field);
+  DBUG_ENTER("create_tmp_field_from_item");
+  DBUG_PRINT("enter", ("Item: %p  modify: %d", item, modify_item));
 
   /*
     To preserve type or DATE/TIME and GEOMETRY fields,
@@ -14772,7 +14774,7 @@ static Field *create_tmp_field_from_item(THD *thd, Item *item, TABLE *table,
     item->set_result_field(new_field);
   if (item->type() == Item::NULL_ITEM)
     new_field->is_created_from_null_item= TRUE;
-  return new_field;
+  DBUG_RETURN(new_field);
 }
 
 

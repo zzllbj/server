@@ -854,7 +854,8 @@ void Item_subselect::fix_length_and_dec()
 
 table_map Item_subselect::used_tables() const
 {
-  return (table_map) ((engine->uncacheable() & ~UNCACHEABLE_EXPLAIN)? 
+  return (table_map) ((!forced_const && !const_item_cache &&
+                       (engine->uncacheable() & ~UNCACHEABLE_EXPLAIN))?
                       used_tables_cache : 0L);
 }
 
@@ -864,7 +865,7 @@ bool Item_subselect::const_item() const
   DBUG_ASSERT(thd);
   return (thd->lex->context_analysis_only ?
           FALSE :
-          forced_const || const_item_cache);
+          used_tables() == 0);
 }
 
 Item *Item_subselect::get_tmp_table_item(THD *thd_arg)

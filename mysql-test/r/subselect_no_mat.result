@@ -1163,19 +1163,19 @@ CREATE TABLE t1 (a int(1));
 EXPLAIN EXTENDED SELECT (SELECT RAND() FROM t1) FROM t1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	PRIMARY	t1	system	NULL	NULL	NULL	NULL	0	0.00	const row not found
-2	UNCACHEABLE SUBQUERY	t1	system	NULL	NULL	NULL	NULL	0	0.00	const row not found
+2	UNCACHEABLE SUBQUERY	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	no matching row in const table
 Warnings:
 Note	1003	select (select rand() from `test`.`t1`) AS `(SELECT RAND() FROM t1)` from `test`.`t1`
 EXPLAIN EXTENDED SELECT (SELECT ENCRYPT('test') FROM t1) FROM t1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	PRIMARY	t1	system	NULL	NULL	NULL	NULL	0	0.00	const row not found
-2	UNCACHEABLE SUBQUERY	t1	system	NULL	NULL	NULL	NULL	0	0.00	const row not found
+2	UNCACHEABLE SUBQUERY	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	no matching row in const table
 Warnings:
 Note	1003	select (select encrypt('test') from `test`.`t1`) AS `(SELECT ENCRYPT('test') FROM t1)` from `test`.`t1`
 EXPLAIN EXTENDED SELECT (SELECT BENCHMARK(1,1) FROM t1) FROM t1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	PRIMARY	t1	system	NULL	NULL	NULL	NULL	0	0.00	const row not found
-2	UNCACHEABLE SUBQUERY	t1	system	NULL	NULL	NULL	NULL	0	0.00	const row not found
+2	UNCACHEABLE SUBQUERY	NULL	NULL	NULL	NULL	NULL	NULL	NULL	NULL	no matching row in const table
 Warnings:
 Note	1003	select (select benchmark(1,1) from `test`.`t1`) AS `(SELECT BENCHMARK(1,1) FROM t1)` from `test`.`t1`
 drop table t1;
@@ -4063,8 +4063,6 @@ SELECT COUNT(*), a
 FROM t1 GROUP BY a
 HAVING (SELECT MIN(m) FROM t2 WHERE m = count(*)) > 1;
 COUNT(*)	a
-2	2
-3	3
 DROP TABLE t1,t2;
 CREATE TABLE t1 (a int, b int);
 CREATE TABLE t2 (m int, n int);
@@ -4584,7 +4582,7 @@ SELECT MAX(b), (SELECT COUNT(*) FROM st1,st2 WHERE st2.b <= t1.b)
 FROM t1 
 WHERE a = 230;
 MAX(b)	(SELECT COUNT(*) FROM st1,st2 WHERE st2.b <= t1.b)
-NULL	NULL
+NULL	0
 DROP TABLE t1, st1, st2;
 #
 # Bug #48709: Assertion failed in sql_select.cc:11782: 
@@ -6651,7 +6649,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 2	SUBQUERY	t1	ALL	NULL	NULL	NULL	NULL	2	
 SELECT COUNT(f1), (SELECT f1 FROM t1 WHERE f2 > 0 limit 1) AS f4 FROM t2, t1 WHERE 'v'= f3;
 COUNT(f1)	f4
-0	NULL
+0	7
 EXPLAIN
 SELECT COUNT(f1), exists(SELECT f1 FROM t1 WHERE f2 > 0 limit 1) AS f4 FROM t2, t1 WHERE 'v'= f3;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
@@ -6659,7 +6657,7 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 2	SUBQUERY	t1	ALL	NULL	NULL	NULL	NULL	2	
 SELECT COUNT(f1), exists(SELECT f1 FROM t1 WHERE f2 > 0 limit 1) AS f4 FROM t2, t1 WHERE 'v'= f3;
 COUNT(f1)	f4
-0	0
+0	1
 EXPLAIN
 SELECT COUNT(f1), f2 > ALL (SELECT f1 FROM t1 WHERE f2 > 0) AS f4 FROM t2, t1 WHERE 'v'= f3;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
@@ -7184,6 +7182,23 @@ id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	NULL	NULL	NULL	NULL	NULL	NULL	NULL	Impossible WHERE
 2	SUBQUERY	NULL	NULL	NULL	NULL	NULL	NULL	NULL	Select tables optimized away
 drop table t1,t2;
+#
+# MDEV-16207: Sig 11 on RHEL7 on Azure
+#
+CREATE TABLE t2 (ser1 char(20)  NOT NULL, ids1 int NOT NULL, nm1 char(32)  NOT NULL);
+INSERT INTO t2 VALUES ('char1',1,'char2'),('char2',2,'char2');
+CREATE TABLE t3 (id2 int );
+INSERT INTO t3 VALUES (1),(2);
+CREATE TABLE t5 (nm1 varchar(255), ls1 varchar(64), state enum('Active','Inactive','Event'));
+SELECT * FROM
+(SELECT nm1,
+(SELECT max(t5.nm1) FROM t5 WHERE t5.ls1 = ser1 AND STATE = 'Active') AS types
+FROM t3 JOIN t2 ON ids1 = id2) AS t1
+ORDER BY nm1 ;
+nm1	types
+char2	NULL
+char2	NULL
+drop table t2,t3,t5;
 End of 5.5 tests
 set optimizer_switch=default;
 select @@optimizer_switch like '%materialization=on%';
