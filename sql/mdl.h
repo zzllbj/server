@@ -113,7 +113,7 @@ public:
   @sa Comments for MDL_object_lock::can_grant_lock() and
       MDL_scoped_lock::can_grant_lock() for details.
 
-  Scoped locks are GLOBAL READ LOCK, COMMIT and database (or schema) locks.
+  Scoped locks are database (or schema) locks.
   The object locks are for tables, triggers etc.
 */
 
@@ -245,6 +245,33 @@ enum enum_mdl_type {
 };
 
 
+/** Backup locks */
+
+/**
+  Blocks (or is blocked by) statements that intend to modify data. Acquired
+  before commit lock by FLUSH TABLES WITH READ LOCK.
+*/
+#define MDL_BACKUP_FTWRL1 enum_mdl_type(0)
+
+/**
+  Blocks (or is blocked by) commits. Acquired after global read lock by
+  FLUSH TABLES WITH READ LOCK.
+*/
+#define MDL_BACKUP_FTWRL2 enum_mdl_type(1)
+
+/**
+  Must be acquired by statements that intend to modify data.
+*/
+#define MDL_BACKUP_STMT enum_mdl_type(2)
+
+/**
+  Must be acquired during commit.
+*/
+#define MDL_BACKUP_COMMIT enum_mdl_type(3)
+#define MDL_BACKUP_END enum_mdl_type(4)
+
+
+
 /** Duration of metadata lock. */
 
 enum enum_mdl_duration {
@@ -302,7 +329,7 @@ public:
     it's necessary to have a separate namespace for them since
     MDL_key is also used outside of the MDL subsystem.
   */
-  enum enum_mdl_namespace { GLOBAL=0,
+  enum enum_mdl_namespace { BACKUP=0,
                             SCHEMA,
                             TABLE,
                             FUNCTION,
@@ -310,7 +337,6 @@ public:
                             PACKAGE_BODY,
                             TRIGGER,
                             EVENT,
-                            COMMIT,
                             USER_LOCK,           /* user level locks. */
                             /* This should be the last ! */
                             NAMESPACE_END };
@@ -618,6 +644,7 @@ public:
            m_type == MDL_EXCLUSIVE;
   }
   enum_mdl_type get_type() const { return m_type; }
+  const LEX_STRING *get_type_name() const;
   MDL_lock *get_lock() const { return m_lock; }
   MDL_key *get_key() const;
   void downgrade_lock(enum_mdl_type type);
