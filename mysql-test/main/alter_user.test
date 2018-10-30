@@ -82,6 +82,10 @@ alter user foo with MAX_QUERIES_PER_HOUR 10
                     MAX_CONNECTIONS_PER_HOUR 30
                     MAX_USER_CONNECTIONS 40;
 select * from mysql.user where user = 'foo';
+
+execute immediate 'alter user foo identified by ''bar''';
+select * from mysql.user where user = 'foo';
+
 drop user foo;
 
 update mysql.global_priv set priv=@root_priv where user='root' and host='localhost';
