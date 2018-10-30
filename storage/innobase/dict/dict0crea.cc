@@ -1691,7 +1691,7 @@ dict_create_or_check_foreign_constraint_tables(void)
 			"END;\n", FALSE, trx);
 		ut_ad(err == DB_SUCCESS);
 		row_drop_table_for_mysql("test/#sql-ib-garbage", trx,
-					 SQLCOM_DROP_DB, true););
+					 TRUE, TRUE););
 
 	/* Check which incomplete table definition to drop. */
 
