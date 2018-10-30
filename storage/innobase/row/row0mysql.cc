@@ -37,6 +37,7 @@ Created 9/17/2000 Heikki Tuuri
 #include <sql_const.h>
 #include "dict0dict.h"
 #include "dict0load.h"
+#include "dict0priv.h"
 #include "dict0stats.h"
 #include "dict0stats_bg.h"
 #include "dict0defrag_bg.h"
@@ -3685,114 +3686,110 @@ defer:
 
 		info = pars_info_create();
 
-		pars_info_add_str_literal(info, "table_name", name);
+		pars_info_add_str_literal(info, "name", name);
 
-		std::basic_string<char, std::char_traits<char>,
-				  ut_allocator<char> > sql;
-		sql.reserve(2000);
+		if (strchr(name, '/')
+		    && dict_table_get_low("SYS_FOREIGN")
+		    && dict_table_get_low("SYS_FOREIGN_COLS")) {
+			err = que_eval_sql(
+				info,
+				"PROCEDURE DROP_FOREIGN_PROC () IS\n"
+				"fid CHAR;\n"
 
-		sql =	"PROCEDURE DROP_TABLE_PROC () IS\n"
-			"sys_foreign_id CHAR;\n"
-			"table_id CHAR;\n"
-			"index_id CHAR;\n"
-			"foreign_id CHAR;\n"
-			"space_id INT;\n"
-			"found INT;\n";
+				"DECLARE CURSOR fk IS\n"
+				"SELECT ID FROM SYS_FOREIGN\n"
+				"WHERE FOR_NAME = :name\n"
+				"AND TO_BINARY(FOR_NAME) = TO_BINARY(:name)\n"
+				"FOR UPDATE;\n"
 
-		sql +=	"DECLARE CURSOR cur_fk IS\n"
-			"SELECT ID FROM SYS_FOREIGN\n"
-			"WHERE FOR_NAME = :table_name\n"
-			"AND TO_BINARY(FOR_NAME)\n"
-			"  = TO_BINARY(:table_name)\n"
-			"LOCK IN SHARE MODE;\n";
+				"BEGIN\n"
+				"OPEN fk;\n"
+				"WHILE 1 = 1 LOOP\n"
+				"  FETCH fk INTO fid;\n"
+				"  IF (SQL % NOTFOUND) THEN RETURN; END IF;\n"
+				"  DELETE FROM SYS_FOREIGN_COLS WHERE ID=fid;\n"
+				"  DELETE FROM SYS_FOREIGN WHERE ID=fid;\n"
+				"END LOOP;\n"
+				"CLOSE fk;\n"
+				"END;\n", FALSE, trx);
+			if (err == DB_SUCCESS) {
+				info = pars_info_create();
+				pars_info_add_str_literal(info, "name", name);
+				goto do_drop;
+			}
+		} else {
+do_drop:
+			if (dict_table_get_low("SYS_VIRTUAL")) {
+				err = que_eval_sql(
+					info,
+					"PROCEDURE DROP_VIRTUAL_PROC () IS\n"
+					"tid CHAR;\n"
 
-		sql +=	"DECLARE CURSOR cur_idx IS\n"
-			"SELECT ID FROM SYS_INDEXES\n"
-			"WHERE TABLE_ID = table_id\n"
-			"LOCK IN SHARE MODE;\n";
+					"BEGIN\n"
+					"SELECT ID INTO tid FROM SYS_TABLES\n"
+					"WHERE NAME = :name FOR UPDATE;\n"
+					"IF (SQL % NOTFOUND) THEN RETURN;"
+					" END IF;\n"
+					"DELETE FROM SYS_VIRTUAL"
+					" WHERE TABLE_ID = tid;\n"
+					"END;\n", FALSE, trx);
+				if (err == DB_SUCCESS) {
+					info = pars_info_create();
+					pars_info_add_str_literal(
+						info, "name", name);
+				}
+			} else {
+				err = DB_SUCCESS;
+			}
 
-		sql +=	"BEGIN\n";
+			err = err == DB_SUCCESS ? que_eval_sql(
+				info,
+				"PROCEDURE DROP_TABLE_PROC () IS\n"
+				"tid CHAR;\n"
+				"iid CHAR;\n"
 
-		sql +=	"SELECT ID INTO table_id\n"
-			"FROM SYS_TABLES\n"
-			"WHERE NAME = :table_name\n"
-			"LOCK IN SHARE MODE;\n"
-			"IF (SQL % NOTFOUND) THEN\n"
-			"       RETURN;\n"
-			"END IF;\n";
+				"DECLARE CURSOR cur_idx IS\n"
+				"SELECT ID FROM SYS_INDEXES\n"
+				"WHERE TABLE_ID = tid FOR UPDATE;\n"
 
-		sql +=	"SELECT SPACE INTO space_id\n"
-			"FROM SYS_TABLES\n"
-			"WHERE NAME = :table_name;\n"
-			"IF (SQL % NOTFOUND) THEN\n"
-			"       RETURN;\n"
-			"END IF;\n";
+				"BEGIN\n"
+				"SELECT ID INTO tid FROM SYS_TABLES\n"
+				"WHERE NAME = :name FOR UPDATE;\n"
+				"IF (SQL % NOTFOUND) THEN RETURN; END IF;\n"
 
-		sql +=	"found := 1;\n"
-			"SELECT ID INTO sys_foreign_id\n"
-			"FROM SYS_TABLES\n"
-			"WHERE NAME = 'SYS_FOREIGN'\n"
-			"LOCK IN SHARE MODE;\n"
-			"IF (SQL % NOTFOUND) THEN\n"
-			"       found := 0;\n"
-			"END IF;\n"
-			"IF (:table_name = 'SYS_FOREIGN') THEN\n"
-			"       found := 0;\n"
-			"END IF;\n"
-			"IF (:table_name = 'SYS_FOREIGN_COLS') \n"
-			"THEN\n"
-			"       found := 0;\n"
-			"END IF;\n";
+				"OPEN cur_idx;\n"
+				"WHILE 1 = 1 LOOP\n"
+				"  FETCH cur_idx INTO iid;\n"
+				"  IF (SQL % NOTFOUND) THEN EXIT; END IF;\n"
+				"  DELETE FROM SYS_FIELDS\n"
+				"  WHERE INDEX_ID = iid;\n"
+				"  DELETE FROM SYS_INDEXES\n"
+				"  WHERE ID = iid AND TABLE_ID = tid;\n"
+				"END LOOP;\n"
+				"CLOSE cur_idx;\n"
 
-		sql +=	"OPEN cur_fk;\n"
-			"WHILE found = 1 LOOP\n"
-			"       FETCH cur_fk INTO foreign_id;\n"
-			"       IF (SQL % NOTFOUND) THEN\n"
-			"               found := 0;\n"
-			"       ELSE\n"
-			"               DELETE FROM \n"
-			"		   SYS_FOREIGN_COLS\n"
-			"               WHERE ID = foreign_id;\n"
-			"               DELETE FROM SYS_FOREIGN\n"
-			"               WHERE ID = foreign_id;\n"
-			"       END IF;\n"
-			"END LOOP;\n"
-			"CLOSE cur_fk;\n";
+				"DELETE FROM SYS_COLUMNS WHERE TABLE_ID=tid;\n"
+				"DELETE FROM SYS_TABLES WHERE NAME=:name;\n"
 
-		sql +=	"found := 1;\n"
-			"OPEN cur_idx;\n"
-			"WHILE found = 1 LOOP\n"
-			"       FETCH cur_idx INTO index_id;\n"
-			"       IF (SQL % NOTFOUND) THEN\n"
-			"               found := 0;\n"
-			"       ELSE\n"
-			"               DELETE FROM SYS_FIELDS\n"
-			"               WHERE INDEX_ID = index_id;\n"
-			"               DELETE FROM SYS_INDEXES\n"
-			"               WHERE ID = index_id\n"
-			"               AND TABLE_ID = table_id;\n"
-			"       END IF;\n"
-			"END LOOP;\n"
-			"CLOSE cur_idx;\n";
+				"END;\n", FALSE, trx) : err;
 
-		sql +=	"DELETE FROM SYS_COLUMNS\n"
-			"WHERE TABLE_ID = table_id;\n"
-			"DELETE FROM SYS_TABLES\n"
-			"WHERE NAME = :table_name;\n";
-
-		if (dict_table_is_file_per_table(table)) {
-			sql += "DELETE FROM SYS_TABLESPACES\n"
-				"WHERE SPACE = space_id;\n"
-				"DELETE FROM SYS_DATAFILES\n"
-				"WHERE SPACE = space_id;\n";
+			if (err == DB_SUCCESS && table->space
+			    && dict_table_get_low("SYS_TABLESPACES")
+			    && dict_table_get_low("SYS_DATAFILES")) {
+				info = pars_info_create();
+				pars_info_add_int4_literal(info, "id",
+							   lint(table->space));
+				err = que_eval_sql(
+					info,
+					"PROCEDURE DROP_SPACE_PROC () IS\n"
+					"BEGIN\n"
+					"DELETE FROM SYS_TABLESPACES\n"
+					"WHERE SPACE = :id;\n"
+					"DELETE FROM SYS_DATAFILES\n"
+					"WHERE SPACE = :id;\n"
+					"END;\n", FALSE, trx);
+			}
 		}
-
-		sql +=	"DELETE FROM SYS_VIRTUAL\n"
-			"WHERE TABLE_ID = table_id;\n";
-
-		sql += "END;\n";
-
-		err = que_eval_sql(info, sql.c_str(), FALSE, trx);
 	} else {
 		page_no = page_nos;
 		for (dict_index_t* index = dict_table_get_first_index(table);
