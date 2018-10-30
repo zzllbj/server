@@ -8844,59 +8844,70 @@ static bool print_grants_for_role(THD *thd, ACL_ROLE * role)
 
 }
 
-/** checks privileges for SHOW GRANTS and SHOW CREATE USER
+/** get the user/host/role name for SHOW GRANTS and SHOW CREATE USER
 
   @note that in case of SHOW CREATE USER the parser guarantees
   that a role can never happen here, so *rolename will never
   be assigned to
 */
-static bool check_show_access(THD *thd, LEX_USER *lex_user,
-                              const char **username,
-                              const char **hostname, const char **rolename)
+bool get_show_user(THD *thd, LEX_USER *lex_user, const char **username,
+                   const char **hostname, const char **rolename)
 {
-  DBUG_ENTER("check_show_access");
+  DBUG_ENTER("get_show_user");
+  Security_context *sctx= thd->security_ctx;
 
   if (lex_user->user.str == current_user.str)
   {
-    *username= thd->security_ctx->priv_user;
-    *hostname= thd->security_ctx->priv_host;
+    *username= sctx->priv_user;
+    *hostname= sctx->priv_host;
+    DBUG_RETURN(false);
   }
-  else if (lex_user->user.str == current_role.str)
+  if (lex_user->user.str == current_role.str)
   {
-    *rolename= thd->security_ctx->priv_role;
+    *rolename= sctx->priv_role;
+    DBUG_RETURN(false);
   }
-  else if (lex_user->user.str == current_user_and_current_role.str)
+  if (lex_user->user.str == current_user_and_current_role.str)
   {
-    *username= thd->security_ctx->priv_user;
-    *hostname= thd->security_ctx->priv_host;
-    *rolename= thd->security_ctx->priv_role;
+    *username= sctx->priv_user;
+    *hostname= sctx->priv_host;
+    *rolename= sctx->priv_role;
+    DBUG_RETURN(false);
   }
-  else
+
+  if (!(lex_user= get_current_user(thd, lex_user)))
   {
-    Security_context *sctx= thd->security_ctx;
-    bool do_check_access;
-
-    lex_user= get_current_user(thd, lex_user);
-    if (!lex_user)
-      DBUG_RETURN(TRUE);
-
-    if (lex_user->is_role())
-    {
-      *rolename= lex_user->user.str;
-      do_check_access= strcmp(*rolename, sctx->priv_role);
-    }
-    else
-    {
-      *username= lex_user->user.str;
-      *hostname= lex_user->host.str;
-      do_check_access= strcmp(*username, sctx->priv_user) ||
-                       strcmp(*hostname, sctx->priv_host);
-    }
-
-    if (do_check_access && check_access(thd, SELECT_ACL, "mysql", 0, 0, 1, 0))
-      DBUG_RETURN(TRUE);
+    *username= *rolename= NULL;
+    DBUG_RETURN(false);
   }
-  DBUG_RETURN(FALSE);
+
+  if (lex_user->is_role())
+  {
+    *rolename= lex_user->user.str;
+    DBUG_RETURN(strcmp(*rolename, sctx->priv_role));
+  }
+
+  *username= lex_user->user.str;
+  *hostname= lex_user->host.str;
+  DBUG_RETURN(strcmp(*username, sctx->priv_user) ||
+              strcmp(*hostname, sctx->priv_host));
+}
+
+/** checks privileges for SHOW GRANTS and SHOW CREATE USER
+*/
+static bool check_show_access(THD *thd, LEX_USER *lex_user,
+                              const char **username, const char **hostname,
+                              const char **rolename)
+{
+  DBUG_ENTER("check_show_access");
+  bool do_check_access=
+         get_show_user(thd, lex_user, username, hostname, rolename);
+
+  if (!*username && !*rolename)
+    DBUG_RETURN(1);
+
+  DBUG_RETURN(do_check_access &&
+              check_access(thd, SELECT_ACL, "mysql", 0, 0, 1, 0));
 }
 
 bool mysql_show_create_user(THD *thd, LEX_USER *lex_user)

@@ -2054,6 +2054,7 @@ flush status;
 create table t1(f1 char(1));
 create view v1 as select * from t1;
 select * from (select f1 as f2, f1 as f3 from v1) v where v.f2='a';
+--replace_result $PS_PROTOCOL 0
 show status like "Created_tmp%";
 drop view v1;
 drop table t1;
@@ -2063,7 +2064,6 @@ set @@optimizer_switch='derived_merge=OFF';
 create table t1(f1 char(1));
 create view v1 as select * from t1;
 select * from (select f1 as f2, f1 as f3 from v1) v where v.f2='a';
-show status like "Created_tmp%";
 drop view v1;
 drop table t1;
 set @@optimizer_switch=@tmp;
@@ -2369,6 +2369,7 @@ DROP TABLE t1;
 # Bug#15943 mysql_next_result hangs on invalid SHOW CREATE VIEW
 #
 
+disable_ps_protocol;
 delimiter //;
 drop table if exists t1;
 drop view if exists v1;
@@ -2379,6 +2380,7 @@ show create view v1;
 drop view v1;
 //
 delimiter ;//
+enable_ps_protocol;
 
 
 #
@@ -3889,7 +3891,9 @@ CREATE VIEW v1 AS SELECT f1() FROM t1;
 let $MYSQLD_DATADIR= `SELECT @@datadir`;
 copy_file std_data/bug48449.frm $MYSQLD_DATADIR/test/v2.frm;
 
+enable_prepare_warnings;
 SHOW CREATE VIEW v1;
+disable_prepare_warnings;
 
 DROP VIEW v1,v2;
 DROP TABLE t1,t2;

@@ -2211,11 +2211,6 @@ create table t1(f1 char(1));
 create view v1 as select * from t1;
 select * from (select f1 as f2, f1 as f3 from v1) v where v.f2='a';
 f2	f3
-show status like "Created_tmp%";
-Variable_name	Value
-Created_tmp_disk_tables	0
-Created_tmp_files	0
-Created_tmp_tables	1
 drop view v1;
 drop table t1;
 set @@optimizer_switch=@tmp;
