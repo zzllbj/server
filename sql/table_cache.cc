@@ -1029,7 +1029,7 @@ static void kill_delayed_threads_for_table(TDC_element *element)
   {
     THD *in_use= tab->in_use;
 
-    DBUG_ASSERT(in_use && tab->s->tdc->flushed);
+    DBUG_ASSERT(in_use);
     if ((in_use->system_thread & SYSTEM_THREAD_DELAYED_INSERT) &&
         ! in_use->killed)
     {
@@ -1072,8 +1072,8 @@ static void kill_delayed_threads_for_table(TDC_element *element)
                         TDC_RT_REMOVE_NOT_OWN_KEEP_SHARE -
                                                 remove all TABLE instances
                                                 except those that belong to
-                                                this thread, but don't mark
-                                                TABLE_SHARE as old. There
+                                                this thread. The table share
+                                                should exist, there
                                                 should be no TABLE objects
                                                 used by other threads and
                                                 caller should have exclusive
@@ -1081,6 +1081,8 @@ static void kill_delayed_threads_for_table(TDC_element *element)
    @param  db           Name of database
    @param  table_name   Name of table
    @param  kill_delayed_threads     If TRUE, kill INSERT DELAYED threads
+   @param  flush_table_shares       Set to TRUE if we should mark TABLE_SHARE
+                                    as old
 
    @note It assumes that table instances are already not used by any
    (other) thread (this should be achieved by using meta-data locks).
@@ -1088,7 +1090,7 @@ static void kill_delayed_threads_for_table(TDC_element *element)
 
 bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
                       const char *db, const char *table_name,
-                      bool kill_delayed_threads)
+                      bool kill_delayed_threads, bool flush_table_shares)
 {
   Share_free_tables::List purge_tables;
   TABLE *table;
@@ -1100,7 +1102,6 @@ bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
   DBUG_ASSERT(remove_type == TDC_RT_REMOVE_UNUSED ||
               thd->mdl_context.is_lock_owner(MDL_key::TABLE, db, table_name,
                                              MDL_EXCLUSIVE));
-
 
   mysql_mutex_lock(&LOCK_unused_shares);
   if (!(element= tdc_lock_share(thd, db, table_name)))
@@ -1129,8 +1130,7 @@ bool tdc_remove_table(THD *thd, enum_tdc_remove_table_type remove_type,
 
   element->ref_count++;
 
-  tc_remove_all_unused_tables(element, &purge_tables,
-                              remove_type != TDC_RT_REMOVE_NOT_OWN_KEEP_SHARE);
+  tc_remove_all_unused_tables(element, &purge_tables, flush_table_shares);
 
   if (kill_delayed_threads)
     kill_delayed_threads_for_table(element);

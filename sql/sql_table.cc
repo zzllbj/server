@@ -2495,8 +2495,9 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
         table->table= 0;
       }
       else
-        tdc_remove_table(thd, TDC_RT_REMOVE_ALL, table->db.str, table->table_name.str,
-                         false);
+        tdc_remove_table(thd, TDC_RT_REMOVE_ALL,
+                         table->db.str, table->table_name.str,
+                         false, true);
 
       /* Check that we have an exclusive lock on the table to be dropped. */
       DBUG_ASSERT(thd->mdl_context.is_lock_owner(MDL_key::TABLE, table->db.str,
@@ -7464,7 +7465,7 @@ static bool mysql_inplace_alter_table(THD *thd,
 
     tdc_remove_table(thd, TDC_RT_REMOVE_NOT_OWN_KEEP_SHARE,
                      table->s->db.str, table->s->table_name.str,
-                     false);
+                     false, false);
   }
 
   /*
@@ -7658,7 +7659,8 @@ static bool mysql_inplace_alter_table(THD *thd,
   {
     // Remove TABLE and TABLE_SHARE for old name from TDC.
     tdc_remove_table(thd, TDC_RT_REMOVE_ALL,
-                     alter_ctx->db.str, alter_ctx->table_name.str, false);
+                     alter_ctx->db.str, alter_ctx->table_name.str, false,
+                     true);
 
     if (mysql_rename_table(db_type, &alter_ctx->db, &alter_ctx->table_name,
                            &alter_ctx->new_db, &alter_ctx->new_alias, 0))
