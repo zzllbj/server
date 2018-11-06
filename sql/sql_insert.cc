@@ -2374,7 +2374,10 @@ bool delayed_get_table(THD *thd, MDL_request *grl_protection_request,
       di->table_list.alias.str=    di->table_list.table_name.str=    di->thd.query();
       di->table_list.alias.length= di->table_list.table_name.length= di->thd.query_length();
       di->table_list.db= di->thd.db;
-      /* We need the tickets so that they can be cloned in handle_delayed_insert */
+      /*
+        We need the tickets so that they can be cloned in
+        handle_delayed_insert
+      */
       di->grl_protection.init(MDL_key::BACKUP, "", "",
                               MDL_BACKUP_STMT, MDL_STATEMENT);
       di->grl_protection.ticket= grl_protection_request->ticket;

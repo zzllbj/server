@@ -38,15 +38,14 @@
 #include "thr_timer.h"
 #include "thr_malloc.h"
 #include "log_slow.h"      /* LOG_SLOW_DISABLE_... */
-
 #include "sql_digest_stream.h"            // sql_digest_state
-
 #include <mysql/psi/mysql_stage.h>
 #include <mysql/psi/mysql_statement.h>
 #include <mysql/psi/mysql_idle.h>
 #include <mysql/psi/mysql_table.h>
 #include <mysql_com_server.h>
 #include "session_tracker.h"
+#include "backup.h"
 
 extern "C"
 void set_thd_stage_info(void *thd,
@@ -1949,7 +1948,7 @@ public:
       m_mdl_global_read_lock(NULL)
   {}
 
-  bool lock_global_read_lock(THD *thd);
+  bool lock_global_read_lock(THD *thd, bool all_tables);
   void unlock_global_read_lock(THD *thd);
   /**
     Check if this connection can acquire protection against GRL and
@@ -2186,6 +2185,7 @@ public:
     rpl_io_thread_info *rpl_io_info;
     rpl_sql_thread_info *rpl_sql_info;
   } system_thread_info;
+  MDL_ticket *mdl_backup_ticket;
 
   void reset_for_next_command(bool do_clear_errors= 1);
   /*

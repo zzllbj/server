@@ -9094,6 +9094,7 @@ bool mysql_alter_table(THD *thd, const LEX_CSTRING *new_db,
   uint tables_opened;
 
   thd->open_options|= HA_OPEN_FOR_ALTER;
+  thd->mdl_backup_ticket= 0;
   bool error= open_tables(thd, &table_list, &tables_opened, 0,
                           &alter_prelocking_strategy);
   thd->open_options&= ~HA_OPEN_FOR_ALTER;

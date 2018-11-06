@@ -109,11 +109,20 @@ static const LEX_STRING lock_types[]=
 
 static const LEX_STRING backup_lock_types[]=
 {
+  { C_STRING_WITH_LEN("MDL_BACKUP_FLUSH") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_WAIT_FLUSH") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_WAIT_DDL") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_WAIT_COMMIT") },
   { C_STRING_WITH_LEN("MDL_BACKUP_FTWRL1") },
   { C_STRING_WITH_LEN("MDL_BACKUP_FTWRL2") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_DML") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_TRANS_DML") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_SYS_DML") },
   { C_STRING_WITH_LEN("MDL_BACKUP_STMT") },
+  { C_STRING_WITH_LEN("MDL_BACKUP_ALTER_COPY") },
   { C_STRING_WITH_LEN("MDL_BACKUP_COMMIT") }
 };
+
 
 #ifdef HAVE_PSI_INTERFACE
 void MDL_key::init_psi_keys()
@@ -300,8 +309,6 @@ Deadlock_detection_visitor::opt_change_victim_to(MDL_context *new_victim)
   and compatibility matrices.
 */
 
-#define MDL_BIT(A) static_cast<MDL_lock::bitmap_t>(1U << A)
-
 /**
   The lock context. Created internally for an acquired lock.
   For a given name, there exists only one MDL_lock instance,
@@ -316,7 +323,7 @@ Deadlock_detection_visitor::opt_change_victim_to(MDL_context *new_victim)
 class MDL_lock
 {
 public:
-  typedef unsigned short bitmap_t;
+  typedef mdl_bitmap_t bitmap_t;
 
   class Ticket_list
   {
@@ -416,9 +423,10 @@ public:
     { return m_waiting_incompatible; }
     virtual bool needs_notification(const MDL_ticket *ticket) const
     {
-      return ticket->get_type() == MDL_SHARED_NO_WRITE ||
-             ticket->get_type() == MDL_SHARED_NO_READ_WRITE ||
-             ticket->get_type() == MDL_EXCLUSIVE;
+      return (MDL_BIT(ticket->get_type()) &
+              (MDL_BIT(MDL_SHARED_NO_WRITE) |
+               MDL_BIT(MDL_SHARED_NO_READ_WRITE) |
+               MDL_BIT(MDL_EXCLUSIVE)));
     }
 
     /**
@@ -459,8 +467,13 @@ public:
     { return m_waiting_incompatible; }
     virtual bool needs_notification(const MDL_ticket *ticket) const
     {
-      return ticket->get_type() == MDL_BACKUP_FTWRL1 ||
-             ticket->get_type() == MDL_BACKUP_FTWRL2;
+      return (MDL_BIT(ticket->get_type()) &
+              (MDL_BIT(MDL_BACKUP_FLUSH) |
+               MDL_BIT(MDL_BACKUP_WAIT_FLUSH) |
+               MDL_BIT(MDL_BACKUP_WAIT_DDL) |
+               MDL_BIT(MDL_BACKUP_WAIT_COMMIT) |
+               MDL_BIT(MDL_BACKUP_FTWRL1) |
+               MDL_BIT(MDL_BACKUP_FTWRL2)));
     }
 
     /**
@@ -469,12 +482,17 @@ public:
 
       Thread which holds global IX lock can be a handler thread for
       insert delayed. We need to kill such threads in order to get
-      global shared lock. We do this my calling code outside of MDL.
+      global shared lock. We do this by calling code outside of MDL.
     */
     virtual bool conflicting_locks(const MDL_ticket *ticket) const
     {
-      return ticket->get_type() == MDL_BACKUP_STMT ||
-             ticket->get_type() == MDL_BACKUP_COMMIT;
+      return (MDL_BIT(ticket->get_type()) &
+              (MDL_BIT(MDL_BACKUP_DML) |
+               MDL_BIT(MDL_BACKUP_TRANS_DML) |
+               MDL_BIT(MDL_BACKUP_SYS_DML) |
+               MDL_BIT(MDL_BACKUP_STMT) |
+               MDL_BIT(MDL_BACKUP_ALTER_COPY) |
+               MDL_BIT(MDL_BACKUP_COMMIT)));
     }
 
     /*
@@ -1587,27 +1605,41 @@ MDL_lock::MDL_object_lock::m_waiting_incompatible[MDL_TYPE_END]=
   The first array specifies if particular type of request can be satisfied
   if there is granted scoped lock of certain type.
 
-             | Type of active  |
-     Request |   backup lock   |
-      type   | F1  F2   S   C  |
-    ---------+-----------------+
-    FTWRL1   |  +   +   -   +  |
-    FTWRL2   |  +   +   -   -  |
-    STMT     |  -   -   +   +  |
-    COMMIT   |  +   -   +   +  |
+     Request |         Type of active backup lock              |
+      type   | S1  S2  S3  S4  F1  F2   D  TD  SD   S   AC  C  |
+    ---------+-------------------------------------------------+
+    S1       |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    S2       |  +   +   +   +   +   +   -   +   +   +   +   +  |
+    S3       |  +   +   +   +   +   +   -   +   +   -   +   +  |
+    S4       |  +   +   +   +   +   +   -   +   -   -   +   -  |
+    FTWRL1   |  +   +   +   +   +   +   -   -   -   -   -   +  |
+    FTWRL2   |  +   +   +   +   +   +   -   -   -   -   -   -  |
+    D        |  -   -   -   -   -   -   +   +   +   +   +   +  |
+    TD       |  +   +   +   +   -   -   +   +   +   +   +   +  |
+    SD       |  +   +   +   -   -   -   +   +   +   +   +   +  |
+    STMT     |  +   +   -   -   -   -   +   +   +   +   +   +  |
+    ALTER_C  |  +   +   +   +   -   -   +   +   +   +   +   +  |
+    COMMIT   |  +   +   +   -   +   -   +   +   +   +   +   +  |
 
   The second array specifies if particular type of request can be satisfied
   if there is already waiting request for the backup lock of certain type.
   I.e. it specifies what is the priority of different lock types.
 
-             |     Pending     |
-     Request |   backup lock   |
-      type   | F1  F2   S   C  |
-    ---------+-----------------+
-    FTWRL1   |  +   +   +   +  |
-    FTWRL2   |  +   +   +   +  |
-    STMT     |  -   +   +   +  |
-    COMMIT   |  +   -   +   +  |
+    Request |             Pending backup lock                  |
+      type   | S1  S2  S3  S4  F1  F2   D  TD  SD   S  AC   C  |
+    ---------+-------------------------------------------------+
+    S1       |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    S2       |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    S3       |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    S4       |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    FTWRL1   |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    FTWRL2   |  +   +   +   +   +   +   +   +   +   +   +   +  |
+    D        |  -   -   -   -   -   -   +   +   +   +   +   +  |
+    TD       |  +   +   +   +   -   -   +   +   +   +   +   +  |
+    SD       |  +   +   +   -   -   -   +   +   +   +   +   +  |
+    STMT     |  +   +   -   -   -   -   +   +   +   +   +   +  |
+    ALTER_C  |  +   +   +   +   -   -   +   +   +   +   +   +  |
+    COMMIT   |  +   +   +   -   +   -   +   +   +   +   +   +  |
 
   Here: "+" -- means that request can be satisfied
         "-" -- means that request can't be satisfied and should wait
@@ -1616,10 +1648,23 @@ MDL_lock::MDL_object_lock::m_waiting_incompatible[MDL_TYPE_END]=
 const MDL_lock::bitmap_t
 MDL_lock::MDL_backup_lock::m_granted_incompatible[MDL_BACKUP_END]=
 {
-  MDL_BIT(MDL_BACKUP_STMT),
-  MDL_BIT(MDL_BACKUP_STMT) | MDL_BIT(MDL_BACKUP_COMMIT),
+  0,
+  MDL_BIT(MDL_BACKUP_DML),
+  MDL_BIT(MDL_BACKUP_DML) | MDL_BIT(MDL_BACKUP_STMT),
+  MDL_BIT(MDL_BACKUP_DML) | MDL_BIT(MDL_BACKUP_SYS_DML) | MDL_BIT(MDL_BACKUP_STMT) | MDL_BIT(MDL_BACKUP_COMMIT),
+
+  /* MDL_BACKUP_FTWRL1 */
+  MDL_BIT(MDL_BACKUP_DML) | MDL_BIT(MDL_BACKUP_TRANS_DML) | MDL_BIT(MDL_BACKUP_SYS_DML) | MDL_BIT(MDL_BACKUP_STMT) | MDL_BIT(MDL_BACKUP_ALTER_COPY),
+  MDL_BIT(MDL_BACKUP_DML) | MDL_BIT(MDL_BACKUP_TRANS_DML) | MDL_BIT(MDL_BACKUP_SYS_DML) | MDL_BIT(MDL_BACKUP_STMT) | MDL_BIT(MDL_BACKUP_ALTER_COPY) | MDL_BIT(MDL_BACKUP_COMMIT),
+  /* MDL_BACKUP_DML */
+  MDL_BIT(MDL_BACKUP_FLUSH) | MDL_BIT(MDL_BACKUP_WAIT_FLUSH) | MDL_BIT(MDL_BACKUP_WAIT_DDL) | MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
   MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
-  MDL_BIT(MDL_BACKUP_FTWRL2)
+  MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  /* MDL_BACKUP_STMT */
+  MDL_BIT(MDL_BACKUP_WAIT_DDL) | MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  /* MDL_BACKUP_COMMIT */
+  MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL2)
 };
 
 
@@ -1628,8 +1673,21 @@ MDL_lock::MDL_backup_lock::m_waiting_incompatible[MDL_BACKUP_END]=
 {
   0,
   0,
-  MDL_BIT(MDL_BACKUP_FTWRL1),
-  MDL_BIT(MDL_BACKUP_FTWRL2)
+  0,
+  0,
+  /* MDL_BACKUP_FTWRL1 */
+  0,
+  0,
+
+  /* MDL_BACKUP_DML */
+  MDL_BIT(MDL_BACKUP_FLUSH) | MDL_BIT(MDL_BACKUP_WAIT_FLUSH) | MDL_BIT(MDL_BACKUP_WAIT_DDL) | MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  /* MDL_BACKUP_STMT */
+  MDL_BIT(MDL_BACKUP_WAIT_FLUSH) | MDL_BIT(MDL_BACKUP_WAIT_DDL) | MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  MDL_BIT(MDL_BACKUP_FTWRL1) | MDL_BIT(MDL_BACKUP_FTWRL2),
+  /* MDL_BACKUP_COMMIT */
+  MDL_BIT(MDL_BACKUP_WAIT_COMMIT) | MDL_BIT(MDL_BACKUP_FTWRL2)
 };
 
 
@@ -2834,9 +2892,10 @@ void MDL_ticket::downgrade_lock(enum_mdl_type type)
   if (m_type == type || !has_stronger_or_equal_type(type))
     return;
 
-  /* Only allow downgrade from EXCLUSIVE and SHARED_NO_WRITE. */
+  /* Only allow downgrade from EXCLUSIVE, SHARED_NO_WRITE or BACKUP_SMT */
   DBUG_ASSERT(m_type == MDL_EXCLUSIVE ||
-              m_type == MDL_SHARED_NO_WRITE);
+              m_type == MDL_SHARED_NO_WRITE ||
+              m_type == MDL_BACKUP_STMT);
 
   mysql_prlock_wrlock(&m_lock->m_rwlock);
   /*

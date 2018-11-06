@@ -486,6 +486,7 @@ err_with_reopen:
 struct tc_collect_arg
 {
   DYNAMIC_ARRAY shares;
+  flush_tables_type flush_type;
 };
 
 static my_bool tc_collect_used_shares(TDC_element *element,
@@ -498,9 +499,27 @@ static my_bool tc_collect_used_shares(TDC_element *element,
   if (element->ref_count > 0 && !element->share->is_view)
   {
     DBUG_ASSERT(element->share);
-    element->ref_count++;                       // Protect against delete
-    if (push_dynamic(shares,(uchar*) &element->share))
-      result= TRUE;
+    bool do_flush= 0;
+    switch (arg->flush_type) {
+    case FLUSH_ALL:
+      do_flush= 1;
+      break;
+    case FLUSH_NON_TRANS_TABLES:
+      if (!element->share->online_backup &&
+          element->share->table_category == TABLE_CATEGORY_USER)
+        do_flush= 1;
+      break;
+    case FLUSH_SYS_TABLES:
+      if (!element->share->online_backup &&
+          element->share->table_category != TABLE_CATEGORY_USER)
+        do_flush= 1;
+    }
+    if (do_flush)
+    {
+      element->ref_count++;                       // Protect against delete
+      if (push_dynamic(shares,(uchar*) &element->share))
+        result= TRUE;
+    }
   }
   mysql_mutex_unlock(&element->LOCK_table_share);
   return result;
@@ -514,7 +533,7 @@ static my_bool tc_collect_used_shares(TDC_element *element,
    possible tables, even if some flush fails.
 */
 
-bool flush_tables(THD *thd)
+bool flush_tables(THD *thd, flush_tables_type flag)
 {
   bool result= TRUE;
   uint open_errors= 0;
@@ -537,6 +556,7 @@ bool flush_tables(THD *thd)
 
   my_init_dynamic_array(&collect_arg.shares, sizeof(TABLE_SHARE*), 100, 100,
                         MYF(0));
+  collect_arg.flush_type= flag;
   if (tdc_iterate(thd, (my_hash_walk_action) tc_collect_used_shares,
                   &collect_arg, true))
   {
@@ -2069,12 +2089,19 @@ retry_share:
             pre-acquiring metadata locks at the beggining of
             open_tables() call.
     */
+    enum enum_mdl_type mdl_type= MDL_BACKUP_DML;
+
+    if (table->s->table_category != TABLE_CATEGORY_USER)
+      mdl_type= MDL_BACKUP_SYS_DML;
+    else if (table->s->online_backup)
+      mdl_type= MDL_BACKUP_TRANS_DML;
+
     if (table_list->mdl_request.is_write_lock_request() &&
         ! (flags & (MYSQL_OPEN_IGNORE_GLOBAL_READ_LOCK |
                     MYSQL_OPEN_FORCE_SHARED_MDL |
                     MYSQL_OPEN_FORCE_SHARED_HIGH_PRIO_MDL |
                     MYSQL_OPEN_SKIP_SCOPED_MDL_LOCK)) &&
-        ! ot_ctx->has_protection_against_grl())
+        ! ot_ctx->has_protection_against_grl(mdl_type))
     {
       MDL_request protection_request;
       MDL_deadlock_handler mdl_deadlock_handler(ot_ctx);
@@ -2086,7 +2113,7 @@ retry_share:
         DBUG_RETURN(TRUE);
       }
 
-      protection_request.init(MDL_key::BACKUP, "", "", MDL_BACKUP_STMT,
+      protection_request.init(MDL_key::BACKUP, "", "", mdl_type,
                               MDL_STATEMENT);
 
       /*
@@ -2105,7 +2132,7 @@ retry_share:
         DBUG_RETURN(TRUE);
       }
 
-      ot_ctx->set_has_protection_against_grl();
+      ot_ctx->set_has_protection_against_grl(mdl_type);
     }
   }
 
@@ -2983,7 +3010,7 @@ Open_table_context::Open_table_context(THD *thd, uint flags)
    m_flags(flags),
    m_action(OT_NO_ACTION),
    m_has_locks(thd->mdl_context.has_locks()),
-   m_has_protection_against_grl(FALSE)
+   m_has_protection_against_grl(0)
 {}
 
 
@@ -3199,7 +3226,7 @@ Open_table_context::recover_from_failed_open()
     against GRL. It is no longer valid as the corresponding lock was
     released by close_tables_for_reopen().
   */
-  m_has_protection_against_grl= FALSE;
+  m_has_protection_against_grl= 0;
   /* Prepare for possible another back-off. */
   m_action= OT_NO_ACTION;
   return result;
@@ -3974,6 +4001,8 @@ lock_table_names(THD *thd, const DDL_options_st &options,
     if (create_table)
       thd->push_internal_handler(&error_handler);  // Avoid warnings & errors
     bool res= thd->mdl_context.acquire_locks(&mdl_requests, lock_wait_timeout);
+    if (!(flags & MYSQL_OPEN_SKIP_SCOPED_MDL_LOCK))
+      thd->mdl_backup_ticket= global_request.ticket;
     if (create_table)
       thd->pop_internal_handler();
     if (!res)

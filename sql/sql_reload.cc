@@ -248,9 +248,9 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
 	UNLOCK TABLES
       */
       tmp_write_to_binlog= 0;
-      if (thd->global_read_lock.lock_global_read_lock(thd))
+      if (thd->global_read_lock.lock_global_read_lock(thd, 1))
 	return 1;                               // Killed
-      if (flush_tables(thd))
+      if (flush_tables(thd, FLUSH_ALL))
       {
         /*
           NOTE: my_error() has been already called by reopen_tables() within
@@ -273,7 +273,7 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
         make_global_read_lock_block_commit(thd) above since they could have
         modified the tables too.
       */
-      if (WSREP(thd) && flush_tables(thd))
+      if (WSREP(thd) && flush_tables(thd, FLUSH_ALL))
         result= 1;
     }
     else

@@ -28,6 +28,10 @@ class MDL_lock;
 class MDL_ticket;
 bool  ok_for_lower_case_names(const char *name);
 
+typedef unsigned short mdl_bitmap_t;
+#define MDL_BIT(A) static_cast<mdl_bitmap_t>(1U << A)
+
+
 /**
   @def ENTER_COND(C, M, S, O)
   Start a wait on a condition.
@@ -246,30 +250,45 @@ enum enum_mdl_type {
 
 
 /** Backup locks */
+#define MDL_BACKUP_FLUSH enum_mdl_type(0)
+#define MDL_BACKUP_WAIT_FLUSH enum_mdl_type(1)
+#define MDL_BACKUP_WAIT_DDL enum_mdl_type(2)
+#define MDL_BACKUP_WAIT_COMMIT enum_mdl_type(3)
 
 /**
   Blocks (or is blocked by) statements that intend to modify data. Acquired
   before commit lock by FLUSH TABLES WITH READ LOCK.
 */
-#define MDL_BACKUP_FTWRL1 enum_mdl_type(0)
+#define MDL_BACKUP_FTWRL1 enum_mdl_type(4)
 
 /**
   Blocks (or is blocked by) commits. Acquired after global read lock by
   FLUSH TABLES WITH READ LOCK.
 */
-#define MDL_BACKUP_FTWRL2 enum_mdl_type(1)
+#define MDL_BACKUP_FTWRL2 enum_mdl_type(5)
+
+#define MDL_BACKUP_DML enum_mdl_type(6)
+#define MDL_BACKUP_TRANS_DML enum_mdl_type(7)
+#define MDL_BACKUP_SYS_DML enum_mdl_type(8)
 
 /**
   Must be acquired by statements that intend to modify data.
 */
-#define MDL_BACKUP_STMT enum_mdl_type(2)
+#define MDL_BACKUP_STMT enum_mdl_type(9)
+
+/*
+  Statement is modifying data, but will not block MDL_BACKUP_STAGE 1-3
+  ALTER TABLE is started with MDL_BACKUP_STMT, but changed to
+  MDL_BACKUP_ALTER_COPY while alter table is running to.
+*/
+
+#define MDL_BACKUP_ALTER_COPY enum_mdl_type(10)
 
 /**
   Must be acquired during commit.
 */
-#define MDL_BACKUP_COMMIT enum_mdl_type(3)
-#define MDL_BACKUP_END enum_mdl_type(4)
-
+#define MDL_BACKUP_COMMIT enum_mdl_type(11)
+#define MDL_BACKUP_END enum_mdl_type(12)
 
 
 /** Duration of metadata lock. */
@@ -963,9 +982,7 @@ private:
    */
   MDL_wait_for_subgraph *m_waiting_for;
   LF_PINS *m_pins;
-private:
-  MDL_ticket *find_ticket(MDL_request *mdl_req,
-                          enum_mdl_duration *duration);
+
   void release_locks_stored_before(enum_mdl_duration duration, MDL_ticket *sentinel);
   void release_lock(enum_mdl_duration duration, MDL_ticket *ticket);
   bool try_acquire_lock_impl(MDL_request *mdl_request,
@@ -1004,6 +1021,8 @@ public:
   {
     mysql_prlock_unlock(&m_LOCK_waiting_for);
   }
+  MDL_ticket *find_ticket(MDL_request *mdl_req,
+                          enum_mdl_duration *duration);
 private:
   MDL_context(const MDL_context &rhs);          /* not implemented */
   MDL_context &operator=(MDL_context &rhs);     /* not implemented */
