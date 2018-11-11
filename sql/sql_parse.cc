@@ -6627,8 +6627,8 @@ static bool execute_sqlcom_select(THD *thd, TABLE_LIST *all_tables)
       Protocol *save_protocol= NULL;
       if (lex->analyze_stmt)
       {
-        if (result && result->is_result_interceptor())
-          ((select_result_interceptor*)result)->disable_my_ok_calls();
+        if (result && result->result_interceptor())
+          result->result_interceptor()->disable_my_ok_calls();
         else 
         {
           DBUG_ASSERT(thd->protocol);
