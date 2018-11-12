@@ -1,0 +1,35 @@
+backup stage start;
+backup stage end;
+backup stage not_existing;
+ERROR HY000: Unknown backup stage: 'not_existing'. Stage should be one of START, FLUSH, WAIT_FOR_FLUSH, LOCK_COMMIT or END
+backup stage start;
+backup stage flush;
+backup stage start;
+ERROR HY000: Backup stage 'START' is before current backup stage 'FLUSH'
+backup stage start;
+ERROR HY000: Backup stage 'START' is before current backup stage 'FLUSH'
+backup stage lock_commit;
+backup stage flush;
+ERROR HY000: Backup stage 'FLUSH' is before current backup stage 'LOCK_COMMIT'
+backup stage end;
+backup stage flush;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+flush tables with read lock;
+backup stage start;
+ERROR HY000: Can't execute the query because you have a conflicting read lock
+unlock tables;
+backup stage start;
+flush tables with read lock;
+ERROR HY000: Can't execute the command as you have a BACKUP STAGE active
+backup stage end;
+set SQL_MODE=Oracle;
+backup stage start;
+backup stage end;
+set SQL_MODE=default;
+create table t1 (a int);
+lock table t1 write;
+backup stage start;
+ERROR HY000: Can't execute the given command because you have active locked tables or an active transaction
+backup stage end;
+ERROR HY000: You must start backup with "BACKUP STAGE START"
+drop table t1;

@@ -331,7 +331,7 @@ extern PSI_mutex_key key_BINLOG_LOCK_index, key_BINLOG_LOCK_xid_list,
   key_LOCK_gdl, key_LOCK_global_system_variables,
   key_LOCK_logger, key_LOCK_manager,
   key_LOCK_prepared_stmt_count,
-  key_LOCK_rpl_status, key_LOCK_server_started,
+  key_LOCK_rpl_status, key_LOCK_server_started, key_LOCK_BACKUP,
   key_LOCK_status, key_LOCK_show_status,
   key_LOCK_thd_data, key_LOCK_thd_kill,
   key_LOCK_user_conn, key_LOG_LOCK_log,
@@ -514,6 +514,7 @@ extern PSI_stage_info stage_upgrading_lock;
 extern PSI_stage_info stage_user_lock;
 extern PSI_stage_info stage_user_sleep;
 extern PSI_stage_info stage_verifying_table;
+extern PSI_stage_info stage_waiting_for_backup;
 extern PSI_stage_info stage_waiting_for_delay_list;
 extern PSI_stage_info stage_waiting_for_gtid_to_be_written_to_binary_log;
 extern PSI_stage_info stage_waiting_for_handler_insert;
@@ -629,8 +630,8 @@ extern mysql_mutex_t LOCK_start_thread;
 extern char* des_key_file;
 extern mysql_mutex_t LOCK_des_key_file;
 #endif
-extern mysql_mutex_t LOCK_server_started;
-extern mysql_cond_t COND_server_started;
+extern mysql_mutex_t LOCK_server_started, LOCK_backup;
+extern mysql_cond_t COND_server_started, COND_backup;
 extern mysql_rwlock_t LOCK_grant, LOCK_sys_init_connect, LOCK_sys_init_slave;
 extern mysql_prlock_t LOCK_system_variables_hash;
 extern mysql_cond_t COND_thread_count, COND_start_thread;

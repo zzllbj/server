@@ -775,6 +775,8 @@ pthread_t signal_thread;
 pthread_attr_t connection_attrib;
 mysql_mutex_t LOCK_server_started;
 mysql_cond_t COND_server_started;
+mysql_mutex_t LOCK_backup;
+mysql_cond_t COND_backup;
 
 int mysqld_server_started=0, mysqld_server_initialized= 0;
 File_parser_dummy_hook file_parser_dummy_hook;
@@ -909,7 +911,7 @@ PSI_mutex_key key_BINLOG_LOCK_index, key_BINLOG_LOCK_xid_list,
   key_LOCK_gdl, key_LOCK_global_system_variables,
   key_LOCK_manager,
   key_LOCK_prepared_stmt_count,
-  key_LOCK_rpl_status, key_LOCK_server_started,
+  key_LOCK_rpl_status, key_LOCK_server_started, key_LOCK_backup,
   key_LOCK_status, key_LOCK_show_status,
   key_LOCK_system_variables_hash, key_LOCK_thd_data, key_LOCK_thd_kill,
   key_LOCK_user_conn, key_LOCK_uuid_short_generator, key_LOG_LOCK_log,
@@ -959,6 +961,7 @@ static PSI_mutex_info all_server_mutexes[]=
   { &key_LOCK_des_key_file, "LOCK_des_key_file", PSI_FLAG_GLOBAL},
 #endif /* HAVE_OPENSSL */
 
+  { &key_LOCK_backup, "LOCK_backup", PSI_FLAG_GLOBAL},
   { &key_BINLOG_LOCK_index, "MYSQL_BIN_LOG::LOCK_index", 0},
   { &key_BINLOG_LOCK_xid_list, "MYSQL_BIN_LOG::LOCK_xid_list", 0},
   { &key_BINLOG_LOCK_binlog_background_thread, "MYSQL_BIN_LOG::LOCK_binlog_background_thread", 0},
@@ -1059,7 +1062,7 @@ PSI_cond_key key_BINLOG_COND_xid_list,
   key_BINLOG_COND_binlog_background_thread,
   key_BINLOG_COND_binlog_background_thread_end,
   key_COND_cache_status_changed, key_COND_manager,
-  key_COND_rpl_status, key_COND_server_started,
+  key_COND_rpl_status, key_COND_server_started, key_COND_backup,
   key_delayed_insert_cond, key_delayed_insert_cond_client,
   key_item_func_sleep_cond, key_master_info_data_cond,
   key_master_info_start_cond, key_master_info_stop_cond,
@@ -1099,6 +1102,7 @@ static PSI_cond_info all_server_conds[]=
   { &key_RELAYLOG_COND_relay_log_updated, "MYSQL_RELAY_LOG::COND_relay_log_updated", 0},
   { &key_RELAYLOG_COND_bin_log_updated, "MYSQL_RELAY_LOG::COND_bin_log_updated", 0},
   { &key_RELAYLOG_COND_queue_busy, "MYSQL_RELAY_LOG::COND_queue_busy", 0},
+  { &key_COND_backup, "THD::COND_backup", 0},
   { &key_COND_wakeup_ready, "THD::COND_wakeup_ready", 0},
   { &key_COND_wait_commit, "wait_for_commit::COND_wait_commit", 0},
   { &key_COND_cache_status_changed, "Query_cache::COND_cache_status_changed", 0},
@@ -2288,6 +2292,8 @@ static void clean_up_mutexes()
   mysql_cond_destroy(&COND_flush_thread_cache);
   mysql_mutex_destroy(&LOCK_server_started);
   mysql_cond_destroy(&COND_server_started);
+  mysql_mutex_destroy(&LOCK_backup);
+  mysql_cond_destroy(&COND_backup);
   mysql_mutex_destroy(&LOCK_prepare_ordered);
   mysql_cond_destroy(&COND_prepare_ordered);
   mysql_mutex_destroy(&LOCK_after_binlog_sync);
@@ -3666,6 +3672,7 @@ SHOW_VAR com_status_vars[]= {
   {"alter_user",           STMT_STATUS(SQLCOM_ALTER_USER)},
   {"analyze",              STMT_STATUS(SQLCOM_ANALYZE)},
   {"assign_to_keycache",   STMT_STATUS(SQLCOM_ASSIGN_TO_KEYCACHE)},
+  {"backup",               STMT_STATUS(SQLCOM_BACKUP)},
   {"begin",                STMT_STATUS(SQLCOM_BEGIN)},
   {"binlog",               STMT_STATUS(SQLCOM_BINLOG_BASE64_EVENT)},
   {"call_procedure",       STMT_STATUS(SQLCOM_CALL)},
@@ -4656,6 +4663,8 @@ static int init_thread_environment()
   mysql_mutex_init(key_LOCK_slave_background, &LOCK_slave_background,
                    MY_MUTEX_INIT_SLOW);
   mysql_cond_init(key_COND_slave_background, &COND_slave_background, NULL);
+  mysql_mutex_init(key_LOCK_backup, &LOCK_backup, MY_MUTEX_INIT_SLOW);
+  mysql_cond_init(key_COND_backup, &COND_backup, NULL);
 
 #ifdef HAVE_OPENSSL
   mysql_mutex_init(key_LOCK_des_key_file,
@@ -4934,6 +4943,7 @@ static int init_server_components()
   my_rnd_init(&sql_rand,(ulong) server_start_time,(ulong) server_start_time/2);
   setup_fpu();
   init_thr_lock();
+  backup_init();
 
 #ifndef EMBEDDED_LIBRARY
   if (init_thr_timer(thread_scheduler->max_threads + extra_max_connections))
@@ -9786,6 +9796,7 @@ PSI_stage_info stage_upgrading_lock= { 0, "Upgrading lock", 0};
 PSI_stage_info stage_user_lock= { 0, "User lock", 0};
 PSI_stage_info stage_user_sleep= { 0, "User sleep", 0};
 PSI_stage_info stage_verifying_table= { 0, "Verifying table", 0};
+PSI_stage_info stage_waiting_for_backup= { 0, "Waiting for backup", 0};
 PSI_stage_info stage_waiting_for_delay_list= { 0, "Waiting for delay_list", 0};
 PSI_stage_info stage_waiting_for_gtid_to_be_written_to_binary_log= { 0, "Waiting for GTID to be written to binary log", 0};
 PSI_stage_info stage_waiting_for_handler_insert= { 0, "Waiting for handler insert", 0};
@@ -9933,6 +9944,7 @@ PSI_stage_info *all_server_stages[]=
   & stage_user_lock,
   & stage_user_sleep,
   & stage_verifying_table,
+  & stage_waiting_for_backup,
   & stage_waiting_for_delay_list,
   & stage_waiting_for_gtid_to_be_written_to_binary_log,
   & stage_waiting_for_handler_insert,

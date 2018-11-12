@@ -1,0 +1,52 @@
+#
+# testing backup stage code
+#
+
+backup stage start;
+backup stage end;
+
+--error ER_BACKUP_UNKNOWN_STAGE
+backup stage not_existing;
+backup stage start;
+backup stage flush;
+--error ER_BACKUP_WRONG_STAGE
+backup stage start;
+--error ER_BACKUP_WRONG_STAGE
+backup stage start;
+backup stage lock_commit;
+--error ER_BACKUP_WRONG_STAGE
+backup stage flush;
+backup stage end;
+--error ER_BACKUP_NOT_RUNNING
+backup stage flush;
+
+#
+# Check backup and FTWRL
+#
+flush tables with read lock;
+--error ER_CANT_UPDATE_WITH_READLOCK
+backup stage start;
+unlock tables;
+backup stage start;
+--error ER_BACKUP_LOCK_IS_ACTIVE
+flush tables with read lock;
+backup stage end;
+
+#
+# Check Oracle syntax
+#
+set SQL_MODE=Oracle;
+backup stage start;
+backup stage end;
+set SQL_MODE=default;
+
+#
+# Check lock tables
+#
+create table t1 (a int);
+lock table t1 write;
+--error ER_LOCK_OR_ACTIVE_TRANSACTION
+backup stage start;
+--error ER_BACKUP_NOT_RUNNING
+backup stage end;
+drop table t1;

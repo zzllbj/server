@@ -1504,6 +1504,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd>  SQL_CALC_FOUND_ROWS
 %token  <kwd>  SQL_NO_CACHE_SYM
 %token  <kwd>  SQL_THREAD
+%token  <kwd>  STAGE_SYM
 %token  <kwd>  STARTS_SYM
 %token  <kwd>  START_SYM                     /* SQL-2003-R */
 %token  <kwd>  STATEMENT_SYM
@@ -1992,7 +1993,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %type <select_order> opt_order_clause order_clause order_list
 
 %type <NONE>
-        analyze_stmt_command
+        analyze_stmt_command backup
         query verb_clause create change select select_into
         do drop insert replace insert2
         insert_values update delete truncate rename compound_statement
@@ -2215,6 +2216,7 @@ statement:
           alter
         | analyze
         | analyze_stmt_command
+        | backup
         | binlog_base64_event
         | call
         | change
@@ -14306,6 +14308,22 @@ opt_table_list:
         | table_list {}
         ;
 
+backup:
+        BACKUP_SYM STAGE_SYM ident
+        {
+          int type;
+          if ((type= find_type($3.str, &backup_stage_names,
+                               FIND_TYPE_NO_PREFIX)) <= 0)
+          {
+            my_error(ER_BACKUP_UNKNOWN_STAGE, MYF(0), $3.str);
+            MYSQL_YYABORT;
+          }
+          Lex->sql_command= SQLCOM_BACKUP;
+          Lex->backup_stage= (backup_stages) (type-1);
+          break;
+        }
+        ;
+
 opt_delete_gtid_domain:
           /* empty */ {}
         | DELETE_DOMAIN_ID_SYM '=' '(' delete_domain_id_list ')'
@@ -15827,6 +15845,7 @@ keyword_sp_var_and_label:
         | SQL_BUFFER_RESULT
         | SQL_NO_CACHE_SYM
         | SQL_THREAD
+        | STAGE_SYM
         | STARTS_SYM
         | STATEMENT_SYM
         | STATUS_SYM

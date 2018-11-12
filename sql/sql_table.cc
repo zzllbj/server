@@ -10248,6 +10248,8 @@ copy_data_between_tables(THD *thd, TABLE *from, TABLE *to,
     DBUG_RETURN(-1);
   }
 
+  backup_set_alter_copy_lock(thd);
+
   alter_table_manage_keys(to, from->file->indexes_are_disabled(), keys_onoff);
 
   from->default_column_bitmaps();

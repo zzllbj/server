@@ -243,6 +243,12 @@ bool reload_acl_and_cache(THD *thd, unsigned long long options,
         my_error(ER_LOCK_OR_ACTIVE_TRANSACTION, MYF(0));
         return 1;
       }
+      if (thd->current_backup_stage != BACKUP_FINISHED)
+      {
+        my_error(ER_BACKUP_LOCK_IS_ACTIVE, MYF(0));
+        return 1;
+      }
+
       /*
 	Writing to the binlog could cause deadlocks, as we don't log
 	UNLOCK TABLES
