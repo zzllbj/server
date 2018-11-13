@@ -7495,6 +7495,32 @@ void TABLE_LIST::set_lock_type(THD *thd, enum thr_lock_type lock)
   }
 }
 
+
+bool TABLE_LIST::is_table_ref_id_equal(TABLE_SHARE *s)
+{
+  enum enum_table_ref_type tp= s->get_table_ref_type();
+  if (m_table_ref_type == tp)
+  {
+    bool res= m_table_ref_version == s->get_table_ref_version();
+
+    /*
+      If definition is different object with view we can check MD5 in frm
+      to check if the same view got into table definition cache again.
+    */
+    if (!res &&
+        tp == TABLE_REF_VIEW &&
+        mariadb_view_version_check(this, s))
+    {
+      // to avoid relatively expensive parsing of frm next time
+      set_table_ref_id(s);
+      return TRUE;
+    }
+    return res;
+  }
+  return FALSE;
+}
+
+
 uint TABLE_SHARE::actual_n_key_parts(THD *thd)
 {
   return use_ext_keys &&

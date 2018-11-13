@@ -37,6 +37,7 @@ bool mysql_create_view(THD *thd, TABLE_LIST *view,
 
 bool mysql_make_view(THD *thd, TABLE_SHARE *share, TABLE_LIST *table,
                      bool open_view_no_parse);
+bool mariadb_view_version_check(TABLE_LIST *view, TABLE_SHARE *share);
 
 
 bool mysql_drop_view(THD *thd, TABLE_LIST *view, enum_drop_mode drop_mode);

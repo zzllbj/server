@@ -2271,13 +2271,7 @@ struct TABLE_LIST
 
     @sa check_and_update_table_version()
   */
-  inline
-  bool is_table_ref_id_equal(TABLE_SHARE *s) const
-  {
-    return (m_table_ref_type == s->get_table_ref_type() &&
-            m_table_ref_version == s->get_table_ref_version());
-  }
-
+  bool is_table_ref_id_equal(TABLE_SHARE *s);
   /**
     Record the value of metadata version of the corresponding
     table definition cache element in this parse tree node.

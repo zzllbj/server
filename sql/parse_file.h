@@ -36,8 +36,10 @@ enum file_opt_type {
 				   allocated with length 20 (19+1) */
   FILE_OPTIONS_STRLIST,         /**< list of escaped strings
                                    (List<LEX_STRING>) */
-  FILE_OPTIONS_ULLLIST          /**< list of ulonglong values
+  FILE_OPTIONS_ULLLIST,         /**< list of ulonglong values
                                    (List<ulonglong>) */
+
+  FILE_OPTIONS_FIXSTRING        /**< fixed length String (LEX_STRING) */
 };
 
 struct File_option

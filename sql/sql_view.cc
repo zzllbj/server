@@ -782,6 +782,16 @@ static File_option view_parameters[]=
   FILE_OPTIONS_STRING}
 };
 
+
+static File_option view_md5_parameters[]=
+{
+
+ {{ C_STRING_WITH_LEN("md5")}, 0, FILE_OPTIONS_FIXSTRING},
+ {{NullS, 0}, 0, FILE_OPTIONS_STRING}
+};
+
+
+
 static LEX_STRING view_file_type[]= {{(char*) STRING_WITH_LEN("VIEW") }};
 
 
@@ -1125,7 +1135,38 @@ err:
   DBUG_RETURN(error);
 }
 
+#define MD5_LEN 32
+/**
+  Check is TABLE_LEST and SHARE match
+  @param[in]  view                TABLE_LIST of the view
+  @param[in]  share               Share object of view
 
+  @return false on error or misspatch
+*/
+
+bool mariadb_view_version_check(TABLE_LIST *view, TABLE_SHARE *share)
+{
+  LEX_STRING md5;
+  char md5_buffer[MD5_LEN + 1];
+  md5.str= md5_buffer;
+  md5.length= MD5_LEN;
+
+  /*
+    Check that both were views (view->is_view() could not be checked
+    because it is not opened).
+  */
+  if (!share->is_view || view->md5.length != MD5_LEN)
+    return FALSE;
+
+  DBUG_ASSERT(share->view_def != NULL);
+  if (share->view_def->parse((uchar*)&md5, NULL,
+                                      view_md5_parameters,
+                                      1,
+                                      &file_parser_dummy_hook))
+    return FALSE;
+  DBUG_ASSERT(md5.length == MD5_LEN);
+  return (strncmp(md5.str, view->md5.str, MD5_LEN) == 0);
+}
 
 /**
   read VIEW .frm and create structures

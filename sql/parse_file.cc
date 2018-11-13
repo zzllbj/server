@@ -145,6 +145,7 @@ write_parameter(IO_CACHE *file, uchar* base, File_option *parameter)
 
   switch (parameter->type) {
   case FILE_OPTIONS_STRING:
+  case FILE_OPTIONS_FIXSTRING:
   {
     LEX_STRING *val_s= (LEX_STRING *)(base + parameter->offset);
     if (my_b_write(file, (const uchar *)val_s->str, val_s->length))
@@ -830,6 +831,22 @@ File_parser::parse(uchar* base, MEM_ROOT *mem_root,
           }
 	  ptr= eol+1;
 	  break;
+	case FILE_OPTIONS_FIXSTRING:
+        {
+	  /* string have to be allocated already  and length set */
+	  LEX_STRING *val= (LEX_STRING *)(base + parameter->offset);
+          DBUG_ASSERT(val->length != 0);
+	  if (ptr[val->length] != '\n')
+	  {
+	    my_error(ER_FPARSER_ERROR_IN_PARAMETER, MYF(0),
+                     parameter->name.str, line);
+	    DBUG_RETURN(TRUE);
+	  }
+	  memcpy(val->str, ptr, val->length);
+	  val->str[val->length]= '\0';
+	  ptr+= (val->length + 1);
+	  break;
+        }
 	case FILE_OPTIONS_TIMESTAMP:
 	{
 	  /* string have to be allocated already */
