@@ -32,6 +32,9 @@
 #include "filesort_utils.h"
 #include "parse_file.h"
 
+/* buffer for timestamp (19+1) */
+#define VIEW_TIME_STAMP_BUFFER_SIZE (PARSE_FILE_TIMESTAMPLENGTH + 1)
+
 /* Structs that defines the TABLE */
 
 class Item;				/* Needed by ORDER */
@@ -2079,7 +2082,7 @@ struct TABLE_LIST
   /* FRMTYPE_ERROR if any type is acceptable */
   enum frm_type_enum required_type;
   handlerton	*db_type;		/* table_type for handler */
-  char		timestamp_buffer[20];	/* buffer for timestamp (19+1) */
+  char		timestamp_buffer[VIEW_TIME_STAMP_BUFFER_SIZE];
   /*
     This TABLE_LIST object is just placeholder for prelocking, it will be
     used for implicit LOCK TABLES only and won't be used in real statement.
