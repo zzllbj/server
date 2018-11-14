@@ -1,0 +1,151 @@
+DROP DATABASE IF EXISTS dbt3_s001;
+CREATE DATABASE dbt3_s001;
+use dbt3_s001;
+# lineitem : {i_l_receiptdate, i_l_shipdate} -> i_l_receiptdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-02-01' AND
+l_receiptdate BETWEEN '1997-01-10' AND '1997-01-25';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity	i_l_receiptdate|i_l_shipdate	4|4	NULL	59 (1%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_receiptdate, i_l_shipdate} -> i_l_receiptdate
+# orders : {i_o_orderdate} -> i_o_orderdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-02-01' AND
+l_receiptdate BETWEEN '1997-01-10' AND '1997-01-25' AND
+o_orderdate > '1997-01-15';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity	i_l_receiptdate|i_l_shipdate	4|4	NULL	59 (1%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref|filter	PRIMARY,i_o_orderdate	PRIMARY|i_o_orderdate	4|4	dbt3_s001.lineitem.l_orderkey	1 (26%)	Using where; Using filter
+# lineitem : {i_l_receiptdate, i_l_shipdate,
+#             i_l_commitdate} -> i_l_receiptdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-02-01' AND
+l_receiptdate BETWEEN '1997-01-10' AND '1997-01-25' AND
+l_commitdate BETWEEN '1997-01-05' AND '1997-01-25';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate	i_l_receiptdate|i_l_commitdate	4|4	NULL	59 (1%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_receiptdate, i_l_shipdate,
+#             i_l_commitdate} -> i_l_commitdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-02-01' AND
+l_receiptdate BETWEEN '1997-01-01' AND '1997-01-25' AND
+l_commitdate BETWEEN '1997-01-15' AND '1997-01-25';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate	i_l_commitdate|i_l_shipdate	4|4	NULL	35 (1%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+CREATE INDEX i_l_extendedprice ON lineitem(l_extendedprice);
+# lineitem : {i_l_receiptdate, i_l_shipdate, i_l_commitdate,
+#             i_l_extendedprice} -> i_l_extendedprice
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1996-11-01' AND '1997-01-21' AND
+l_receiptdate BETWEEN '1996-11-21' AND '1997-01-25' AND
+l_commitdate BETWEEN '1996-11-25' AND '1997-01-20' AND
+l_extendedprice BETWEEN 26000 AND 27000;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate,i_l_extendedprice	i_l_extendedprice|i_l_commitdate	9|4	NULL	77 (3%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_shipdate, i_l_extendedprice} -> i_l_shipdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1997-01-11' AND '1997-01-21' AND
+l_extendedprice BETWEEN 26000 AND 27000;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_orderkey,i_l_orderkey_quantity,i_l_extendedprice	i_l_shipdate|i_l_extendedprice	4|9	NULL	29 (1%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_shipdate, i_l_extendedprice} -> i_l_extendedprice
+# intersection point in the I quadrant
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE (l_shipdate BETWEEN '1997-01-11' AND '1997-01-26' OR
+l_shipdate BETWEEN '1995-02-01' AND '1995-02-14' OR
+l_shipdate BETWEEN '1994-12-12' AND '1994-12-28'
+       ) AND l_extendedprice BETWEEN 26000 AND 27000;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_orderkey,i_l_orderkey_quantity,i_l_extendedprice	i_l_extendedprice|i_l_shipdate	9|4	NULL	77 (2%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_shipdate, i_l_extendedprice} -> i_l_shipdate
+# parallel lines
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE (l_shipdate BETWEEN '1997-01-11' AND '1997-01-26' OR
+l_shipdate BETWEEN '1995-02-01' AND '1995-02-16' OR
+l_shipdate BETWEEN '1994-12-12' AND '1994-12-27'
+       ) AND l_extendedprice BETWEEN 26000 AND 27000;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_orderkey,i_l_orderkey_quantity,i_l_extendedprice	i_l_extendedprice|i_l_shipdate	9|4	NULL	77 (2%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+CREATE INDEX i_l_discount ON lineitem(l_discount);
+CREATE INDEX i_l_tax ON lineitem(l_tax);
+# lineitem : {i_l_receiptdate, i_l_shipdate, i_l_commitdate,
+#             i_l_extendedprice, i_l_discount, i_l_tax}
+#             -> {i_l_extendedprice}
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1996-11-01' AND '1997-01-21' AND
+l_receiptdate BETWEEN '1996-11-21' AND '1997-01-25' AND
+l_commitdate BETWEEN '1996-11-25' AND '1997-01-20' AND
+l_extendedprice BETWEEN 26000 AND 27000 AND
+l_discount BETWEEN 0 AND 0.01 AND
+l_tax BETWEEN 0.03 AND 0.04;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate,i_l_extendedprice,i_l_discount,i_l_tax	i_l_extendedprice|i_l_commitdate	9|4	NULL	77 (3%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+DROP INDEX i_l_extendedprice on lineitem;
+DROP INDEX i_l_discount on lineitem;
+DROP INDEX i_l_tax on lineitem;
+SET max_rowid_filter_size= 1024;
+# lineitem : {i_l_shipdate, i_l_receiptdate, i_l_commitdate}
+#             -> i_l_shipdate
+#            i_l_commitdate isn't in-memory -> isn't used
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE  l_shipdate BETWEEN '1996-12-28' AND '1997-01-20' AND
+l_receiptdate BETWEEN '1996-12-21' AND '1997-01-25' AND
+l_commitdate BETWEEN '1996-12-01' AND '1997-01-25';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate	i_l_shipdate|i_l_receiptdate	4|4	NULL	72 (2%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+SET max_rowid_filter_size= DEFAULT;
+# lineitem : {i_l_shipdate, i_l_commitdate} -> i_l_commitdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE l_shipdate BETWEEN '1993-01-01' AND '1997-01-30' AND
+l_commitdate BETWEEN '1997-01-10' AND '1997-01-12';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range	PRIMARY,i_l_shipdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate	i_l_commitdate	4	NULL	6	Using index condition; Using where
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_shipdate, i_l_commitdate} -> i_l_commitdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE l_shipdate BETWEEN '1993-01-01' AND '1997-01-30' AND
+l_commitdate BETWEEN '1993-01-10' AND '1997-01-12';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	ALL	PRIMARY,i_l_shipdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate	NULL	NULL	NULL	6005	Using where
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_shipdate, i_l_commitdate, i_l_receiptdate}
+#             -> i_l_receiptdate
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE l_shipdate BETWEEN '1993-01-01' AND '1997-01-30' AND
+l_commitdate BETWEEN '1993-01-10' AND '1997-01-12' AND
+l_receiptdate BETWEEN '1997-01-10' AND '1997-01-12';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity,i_l_commitdate	i_l_receiptdate	4	NULL	10	Using index condition; Using where
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+# lineitem : {i_l_shipdate, i_l_receiptdate} -> i_l_receiptdate
+# indexes with high selectivity
+EXPLAIN SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE l_shipdate BETWEEN '1997-01-09' AND '1997-01-10' AND
+l_receiptdate BETWEEN '1997-01-09' AND '1997-01-10';
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	lineitem	range|filter	PRIMARY,i_l_shipdate,i_l_receiptdate,i_l_orderkey,i_l_orderkey_quantity	i_l_receiptdate|i_l_shipdate	4|4	NULL	6 (1%)	Using index condition; Using where; Using filter
+1	SIMPLE	orders	eq_ref	PRIMARY	PRIMARY	4	dbt3_s001.lineitem.l_orderkey	1	
+DROP DATABASE dbt3_s001;

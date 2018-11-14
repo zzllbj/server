@@ -35,7 +35,7 @@ void Range_filter_cost_info::init(TABLE *tab, uint key_numb)
 
 void TABLE::sort_range_filter_cost_info_array()
 {
-  if (best_filter_count == 2)
+  if (best_filter_count  <= 2)
     return;
 
   for (uint i= best_filter_count; i < range_filter_cost_info_elements-1; i++)
@@ -216,3 +216,4 @@ Range_filter_cost_info
   }
   return best_filter;
 }
+

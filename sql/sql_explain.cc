@@ -380,11 +380,13 @@ int print_explain_row(select_result_sink *result,
   item_list.push_back(item, mem_root);
 
   /* 'rows' */
+  StringBuffer<64> rows_str;
   if (rows)
   {
+    rows_str.append_ulonglong((ulonglong)(*rows)); 
     item_list.push_back(new (mem_root)
-                        Item_int(thd, *rows, MY_INT64_NUM_DECIMAL_DIGITS),
-                        mem_root);
+                        Item_string_sys(thd, rows_str.ptr(),
+                                        rows_str.length()), mem_root);
   }
   else
     item_list.push_back(item_null, mem_root);
@@ -1147,12 +1149,12 @@ void Explain_table_access::fill_key_len_str(String *key_len_str) const
     key_len_str->append(buf, length);
   }
 
-  if (key.get_filter_key_length() != (uint)-1)
+  if (key.get_filter_len() != (uint)-1)
   {
     char buf[64];
     size_t length;
-    key_len_str->append(',');
-    length= longlong10_to_str(key.get_filter_key_length(), buf, 10) - buf;
+    key_len_str->append('|');
+    length= longlong10_to_str(key.get_filter_len(), buf, 10) - buf;
     key_len_str->append(buf, length);
   }
 }
@@ -1177,6 +1179,20 @@ bool Explain_index_use::set(MEM_ROOT *mem_root, KEY *key, uint key_len_arg)
   return 0;
 }
 
+bool Explain_index_use::set_filter(MEM_ROOT *mem_root, KEY *key, uint key_len_arg)
+{
+  if (!(filter_name= strdup_root(mem_root, key->name.str)))
+    return 1;
+  filter_len= key_len_arg;
+  uint len= 0;
+  for (uint i= 0; i < key->usable_key_parts; i++)
+  {
+    len += key->key_part[i].store_length;
+    if (len >= key_len_arg)
+      break;
+  }
+  return 0;
+}
 
 bool Explain_index_use::set_pseudo_key(MEM_ROOT *root, const char* key_name_arg)
 {
@@ -1240,7 +1256,16 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
   }
 
   /* `type` column */
-  push_str(thd, &item_list, join_type_str[type]);
+   StringBuffer<64> join_type_buf;
+  if (!is_filter_set())
+    push_str(thd, &item_list, join_type_str[type]);
+  else
+  {
+    join_type_buf.append(join_type_str[type]);
+    join_type_buf.append("|filter");
+    item_list.push_back(new (mem_root)
+                        Item_string_sys(thd, join_type_buf.ptr(),                                                            join_type_buf.length()), mem_root);
+  }
 
   /* `possible_keys` column */
   StringBuffer<64> possible_keys_buf;
@@ -1252,6 +1277,11 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
   /* `key` */
   StringBuffer<64> key_str;
   fill_key_str(&key_str, false);
+  if (key.get_filter_name())
+  {
+    key_str.append("|");
+    key_str.append(key.get_filter_name());
+  }
   
   if (key_str.length() > 0)
     push_string(thd, &item_list, &key_str);

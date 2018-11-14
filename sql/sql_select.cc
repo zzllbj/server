@@ -101,6 +101,9 @@ static int sort_keyuse(KEYUSE *a,KEYUSE *b);
 static bool are_tables_local(JOIN_TAB *jtab, table_map used_tables);
 static bool create_ref_for_key(JOIN *join, JOIN_TAB *j, KEYUSE *org_keyuse,
 			       bool allow_full_scan, table_map used_tables);
+static ha_rows get_quick_record_count(THD *thd, SQL_SELECT *select,
+				      TABLE *table,
+				      const key_map *keys,ha_rows limit);
 void best_access_path(JOIN *join, JOIN_TAB *s, 
                              table_map remaining_tables, uint idx, 
                              bool disable_jbuf, double record_count,
@@ -1462,6 +1465,45 @@ int JOIN::optimize()
 }
 
 
+bool
+JOIN::make_range_filter_select(SQL_SELECT *select)
+{
+  DBUG_ENTER("make_range_filter_selects");
+
+  JOIN_TAB *tab;
+
+  for (tab= first_linear_tab(this, WITH_BUSH_ROOTS, WITHOUT_CONST_TABLES);
+       tab;
+       tab= next_linear_tab(this, tab, WITH_BUSH_ROOTS))
+  {
+    if (tab->filter)
+    {
+      int err;
+      SQL_SELECT *sel;
+      Item **sargable_cond= get_sargable_cond(this, tab->table);
+      sel= make_select(tab->table, const_table_map, const_table_map,
+                       *sargable_cond, (SORT_INFO*) 0, 1, &err);
+      if (!sel)
+        DBUG_RETURN(1);
+      tab->filter->select= sel;
+
+      key_map filter_map;
+      filter_map.clear_all();
+      filter_map.set_bit(tab->filter->key_no);
+      bool force_index_save= tab->table->force_index;
+      tab->table->force_index= true;
+      (void) sel->test_quick_select(thd, filter_map, (table_map) 0,
+                                    (ha_rows) HA_POS_ERROR,
+				    true, false, true);
+      tab->table->force_index= force_index_save;
+      if (thd->is_error())
+        DBUG_RETURN(1);
+      DBUG_ASSERT(sel->quick);
+    }
+  }
+  DBUG_RETURN(0);
+}
+
 int JOIN::init_join_caches()
 {
   JOIN_TAB *tab;
@@ -1980,6 +2022,9 @@ int JOIN::optimize_stage2()
   if (get_best_combination())
     DBUG_RETURN(1);
   
+  if (make_range_filter_select(select))
+    DBUG_RETURN(1);
+
   if (select_lex->handle_derived(thd->lex, DT_OPTIMIZE))
     DBUG_RETURN(1);
 
@@ -7243,11 +7288,14 @@ best_access_path(JOIN      *join,
         loose_scan_opt.check_ref_access_part2(key, start_key, records, tmp);
       } /* not ft_key */
 
-      filter= table->best_filter_for_current_join_order(start_key->key,
+      if (records < DBL_MAX)
+      {
+        filter= table->best_filter_for_current_join_order(start_key->key,
                                                         records,
                                                         record_count);
-      if (filter && (filter->get_filter_gain(record_count*records) < tmp))
-        tmp= tmp - filter->get_filter_gain(record_count*records);
+        if (filter && (filter->get_filter_gain(record_count*records) < tmp))
+          tmp= tmp - filter->get_filter_gain(record_count*records);
+      }
 
       if (tmp + 0.0001 < best_time - records/(double) TIME_FOR_COMPARE)
       {
@@ -7412,11 +7460,14 @@ best_access_path(JOIN      *join,
     else
       tmp+= s->startup_cost;
 
-    filter= s->table->best_filter_for_current_join_order(MAX_KEY,
-                                                         rnd_records,
-                                                         record_count);
-    if (filter && (filter->get_filter_gain(record_count*rnd_records) < tmp))
-      tmp= tmp - filter->get_filter_gain(record_count*rnd_records);
+    if (s->quick && s->quick->get_type() == QUICK_SELECT_I::QS_TYPE_RANGE)
+    {
+      filter= s->table->best_filter_for_current_join_order(s->quick->index,
+                                                           rnd_records,
+                                                           record_count);
+      if (filter && (filter->get_filter_gain(record_count*rnd_records) < tmp))
+        tmp= tmp - filter->get_filter_gain(record_count*rnd_records);
+    }
 
     /*
       We estimate the cost of evaluating WHERE clause for found records
@@ -7435,7 +7486,9 @@ best_access_path(JOIN      *join,
       best= tmp;
       records= best_records;
       best_key= 0;
-      best_filter= filter;
+      best_filter= 0;
+      if (s->quick && s->quick->get_type() == QUICK_SELECT_I::QS_TYPE_RANGE)
+        best_filter= filter;
       /* range/index_merge/ALL/index access method are "independent", so: */
       best_ref_depends_map= 0;
       best_uses_jbuf= MY_TEST(!disable_jbuf && !((s->table->map &
@@ -12478,6 +12531,16 @@ void JOIN_TAB::cleanup()
   select= 0;
   delete quick;
   quick= 0;
+  if (filter && filter->select)
+  {
+      if (filter->select->quick)
+      {
+        delete filter->select->quick;
+        filter->select->quick= 0;
+      }
+      delete filter->select;
+      filter->select= 0;
+  }
   if (cache)
   {
     cache->free();
@@ -24977,11 +25040,13 @@ int print_explain_message_line(select_result_sink *result,
     item_list.push_back(item_null, mem_root);
 
   /* `rows` */
+  StringBuffer<64> rows_str;
   if (rows)
   {
-    item_list.push_back(new (mem_root) Item_int(thd, *rows,
-                                     MY_INT64_NUM_DECIMAL_DIGITS),
-                        mem_root);
+    rows_str.append_ulonglong((ulonglong)(*rows));
+    item_list.push_back(new (mem_root)
+                        Item_string_sys(thd, rows_str.ptr(),
+                                        rows_str.length()), mem_root);
   }
   else
     item_list.push_back(item_null, mem_root);
@@ -25055,16 +25120,6 @@ bool JOIN_TAB::save_filter_explain_data(Explain_table_access *eta)
 {
   if (!filter)
     return 0;
-  KEY *pk_key= get_keyinfo_by_key_no(filter->key_no);
-  StringBuffer<64> buff_for_pk;
-  const char *tmp_buff;
-  buff_for_pk.append("filter:");
-  tmp_buff= pk_key->name.str;
-  buff_for_pk.append(tmp_buff, strlen(tmp_buff), system_charset_info);
-  if (!(eta->ref_list.append_str(join->thd->mem_root,
-                                 buff_for_pk.c_ptr_safe())))
-    return 1;
-  eta->key.set_filter_key_length(pk_key->key_length);
   (filter->selectivity*100 >= 1) ? eta->filter_perc= round(filter->selectivity*100) :
                                    eta->filter_perc= 1;
   return 0;
@@ -25207,6 +25262,14 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
   // psergey-todo: ^ check for error return code 
 
   /* Build "key", "key_len", and "ref" */
+
+  if (filter)
+  {
+    eta->key.set_filter(thd->mem_root,
+                        &filter->table->key_info[filter->key_no],
+                        filter->select->quick->max_used_key_length);
+  }
+
   if (tab_type == JT_NEXT)
   {
     key_info= table->key_info+index;

@@ -130,6 +130,7 @@ public:
   double a;                         // slope of the linear function
   double selectivity;
   double intersect_x_axis_abcissa;
+  SQL_SELECT *select;
 
   /**
     Filter cost functions
@@ -155,7 +156,7 @@ public:
   }
   /* End of filter cost functions */
 
-  Range_filter_cost_info() : table(0), key_no(0) {}
+  Range_filter_cost_info() : table(0), key_no(0), select(0) {}
 
   void init(TABLE *tab, uint key_numb);
 

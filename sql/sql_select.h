@@ -1625,6 +1625,7 @@ public:
   bool optimize_unflattened_subqueries();
   bool optimize_constant_subqueries();
   int init_join_caches();
+  bool make_range_filter_select(SQL_SELECT *select);
   bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
 			  bool before_group_by, bool recompute= FALSE);
 

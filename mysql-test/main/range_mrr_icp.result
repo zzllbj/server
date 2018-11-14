@@ -1898,7 +1898,7 @@ explain
 select count(*) from t2 left join t1 on (t1.key1 < 3 or t1.key1 > 1020) and t1.key2 < 1000;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	64	
-1	SIMPLE	t1	range	i1,i2	i1	4	NULL	78	Using where; Rowid-ordered scan; Using join buffer (flat, BNL join)
+1	SIMPLE	t1	range|filter	i1,i2	i1|i2	4|4	NULL	78 (89%)	Using where; Rowid-ordered scan; Using join buffer (flat, BNL join); Using filter
 select count(*) from t2 left join t1 on (t1.key1 < 3 or t1.key1 > 1020) and t1.key2 < 1000;
 count(*)
 128
@@ -2536,7 +2536,7 @@ explain select * from t1,t2
 where a = d and (a,e) in ((3,3),(7,7),(8,8)) and length(f) = 1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	range	idx	idx	5	NULL	6	Using index condition; Rowid-ordered scan
-1	SIMPLE	t2	ref	idx1,idx2	idx1	5	test.t1.a	12	Using where
+1	SIMPLE	t2	ref|filter	idx1,idx2	idx1|idx2	5|5	test.t1.a	12 (13%)	Using where; Using filter
 explain format=json select * from t1,t2
 where a = d and (a,e) in ((3,3),(7,7),(8,8)) and length(f) = 1;
 EXPLAIN
@@ -2560,7 +2560,7 @@ EXPLAIN
       "access_type": "ref",
       "possible_keys": ["idx1", "idx2"],
       "key": "idx1",
-      "key_length": "5",
+      "key_length": "5|5",
       "used_key_parts": ["d"],
       "ref": ["test.t1.a"],
       "rows": 12,
@@ -2633,7 +2633,7 @@ insert into t1 select * from t1;
 explain select * from t1,t2 
 where a = d and (a,e) in ((4,4),(7,7),(8,8)) and length(f) = 1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	range	idx1,idx2	idx2	5	NULL	6	Using where; Rowid-ordered scan
+1	SIMPLE	t2	range|filter	idx1,idx2	idx2|idx1	5|5	NULL	6 (7%)	Using where; Rowid-ordered scan; Using filter
 1	SIMPLE	t1	ref	idx	idx	5	test.t2.d	11	
 explain format=json select * from t1,t2 
 where a = d and (a,e) in ((4,4),(7,7),(8,8)) and length(f) = 1;
@@ -2646,7 +2646,7 @@ EXPLAIN
       "access_type": "range",
       "possible_keys": ["idx1", "idx2"],
       "key": "idx2",
-      "key_length": "5",
+      "key_length": "5|5",
       "used_key_parts": ["e"],
       "rows": 6,
       "filtered": 100,

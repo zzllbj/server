@@ -583,7 +583,8 @@ class Explain_index_use : public Sql_alloc
 {
   char *key_name;
   uint key_len;
-  uint key_len_for_filter;
+  char *filter_name;
+  uint filter_len;
 public:
   String_list key_parts_list;
   
@@ -596,16 +597,17 @@ public:
   {
     key_name= NULL;
     key_len= (uint)-1;
-    key_len_for_filter= (uint)-1;
+    filter_name= NULL;
+    filter_len= (uint)-1;
   }
   bool set(MEM_ROOT *root, KEY *key_name, uint key_len_arg);
   bool set_pseudo_key(MEM_ROOT *root, const char *key_name);
-  void set_filter_key_length(uint key_length_arg)
-  { key_len_for_filter= key_length_arg; }
+  bool set_filter(MEM_ROOT *root, KEY *key, uint key_len_arg);
 
   inline const char *get_key_name() const { return key_name; }
   inline uint get_key_len() const { return key_len; }
-  inline uint get_filter_key_length() const { return key_len_for_filter; }
+  inline const char *get_filter_name() const { return filter_name; }
+  inline uint get_filter_len() const { return filter_len; }
 };
 
 
