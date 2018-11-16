@@ -21,7 +21,7 @@ Cardinality	NULL
 Sub_part	NULL
 Packed	NULL
 Null	YES
-Index_type	HASH_INDEX
+Index_type	HASH
 Comment	
 Index_comment	
 insert into t1 values(1),(2),(3),(4),(5);
@@ -71,7 +71,7 @@ create table t1 (a int primary key, b blob unique , c int unique );
 show keys from t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
 t1	0	PRIMARY	1	a	A	0	NULL	NULL		BTREE		
-t1	0	b	1	b	A	NULL	NULL	NULL	YES	HASH_INDEX		
+t1	0	b	1	b	A	NULL	NULL	NULL	YES	HASH		
 t1	0	c	1	c	A	NULL	NULL	NULL	YES	BTREE		
 insert into t1 values(1,1,1),(2,2,2),(3,3,3),(4,4,4),(5,5,5),(6,6,6),(7,7,7);
 select * from t1 limit 3;
@@ -130,9 +130,9 @@ drop table t1;
 create table t1 (a blob unique, b blob unique , c blob unique);
 show keys from t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
-t1	0	a	1	a	A	NULL	NULL	NULL	YES	HASH_INDEX		
-t1	0	b	1	b	A	NULL	NULL	NULL	YES	HASH_INDEX		
-t1	0	c	1	c	A	NULL	NULL	NULL	YES	HASH_INDEX		
+t1	0	a	1	a	A	NULL	NULL	NULL	YES	HASH		
+t1	0	b	1	b	A	NULL	NULL	NULL	YES	HASH		
+t1	0	c	1	c	A	NULL	NULL	NULL	YES	HASH		
 insert into t1 values(1,1,1),(2,2,2),(3,3,3),(4,4,4),(5,5,5),(6,6,6),(7,7,7);
 select * from t1 limit 3;
 a	b	c
@@ -228,19 +228,19 @@ t1	CREATE TABLE `t1` (
 show keys from t1;
 Table	Non_unique	Key_name	Seq_in_index	Column_name	Collation	Cardinality	Sub_part	Packed	Null	Index_type	Comment	Index_comment
 t1	0	PRIMARY	1	a	A	0	NULL	NULL		BTREE		
-t1	0	b	1	b	A	NULL	NULL	NULL	YES	HASH_INDEX		
-t1	0	b	2	c	A	NULL	NULL	NULL	YES	HASH_INDEX		
+t1	0	b	1	b	A	NULL	NULL	NULL	YES	HASH		
+t1	0	b	2	c	A	NULL	NULL	NULL	YES	HASH		
 t1	0	b_2	1	b	A	NULL	NULL	NULL	YES	BTREE		
 t1	0	b_2	2	f	A	NULL	NULL	NULL	YES	BTREE		
-t1	0	e	1	e	A	NULL	NULL	NULL	YES	HASH_INDEX		
-t1	0	e	2	g	A	0	NULL	NULL	YES	HASH_INDEX		
-t1	0	a	1	a	A	0	NULL	NULL		HASH_INDEX		
-t1	0	a	2	b	A	0	NULL	NULL	YES	HASH_INDEX		
-t1	0	a	3	c	A	0	NULL	NULL	YES	HASH_INDEX		
-t1	0	a	4	d	A	0	NULL	NULL	YES	HASH_INDEX		
-t1	0	a	5	e	A	0	NULL	NULL	YES	HASH_INDEX		
-t1	0	a	6	f	A	0	NULL	NULL	YES	HASH_INDEX		
-t1	0	a	7	g	A	0	NULL	NULL	YES	HASH_INDEX		
+t1	0	e	1	e	A	NULL	NULL	NULL	YES	HASH		
+t1	0	e	2	g	A	0	NULL	NULL	YES	HASH		
+t1	0	a	1	a	A	0	NULL	NULL		HASH		
+t1	0	a	2	b	A	0	NULL	NULL	YES	HASH		
+t1	0	a	3	c	A	0	NULL	NULL	YES	HASH		
+t1	0	a	4	d	A	0	NULL	NULL	YES	HASH		
+t1	0	a	5	e	A	0	NULL	NULL	YES	HASH		
+t1	0	a	6	f	A	0	NULL	NULL	YES	HASH		
+t1	0	a	7	g	A	0	NULL	NULL	YES	HASH		
 insert into t1 values(1,1,1,1,1,1,1),(2,2,2,2,2,2,2),(3,3,3,3,3,3,3),(4,4,4,4,4,4,4),
 (5,5,5,5,5,5,5),(6,6,6,6,6,6,6),(7,7,7,7,7,7,7),(8,8,8,8,8,8,8),(9,9,9,9,9,9,9);
 select * from t1 limit 3;

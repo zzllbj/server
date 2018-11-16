@@ -6594,7 +6594,7 @@ static int get_schema_stat_record(THD *thd, TABLE_LIST *tables,
             table->field[9]->set_notnull();
           }
           if (key->flags & HA_LONG_UNIQUE_HASH)
-            table->field[13]->store(STRING_WITH_LEN("HASH_INDEX"), cs);
+            table->field[13]->store(STRING_WITH_LEN("HASH"), cs);
           else
           {
             const char *tmp= show_table->file->index_type(i);
