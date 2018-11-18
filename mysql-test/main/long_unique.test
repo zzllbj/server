@@ -1,4 +1,5 @@
 let datadir=`select @@datadir`;
+
 --echo #Structure of tests
 --echo #First we will check all option for
 --echo #table containing single unique column
@@ -163,7 +164,6 @@ repeat('s',2995));
 insert into t1 values(repeat('m',4000*11),10,repeat('s',4000*11),repeat('s',4000*11),repeat('s',2995));
 truncate table t1;
 insert into t1 values(1,2,3,4,5),(2,11,22,33,44),(3111,222,333,444,555),(5611,2222,3333,4444,5555);
-
 --echo #now some alter commands;
 alter table t1 add column f int;
 desc t1;

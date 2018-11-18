@@ -4160,9 +4160,9 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  }
     }
       }
-      /* We can not store key_part_length more then 2^16 - 1 in frm
+      /* We can not store key_part_length more then 2^15 - 1 in frm
          So we will simply make it zero */
-      if (is_hash_field_added && key_part_length > (2<<16) - 1)
+      if (is_hash_field_added && key_part_length >= (2<<15) - 1)
         key_part_info->length= 0;
       else
         key_part_info->length= (uint16) key_part_length;
