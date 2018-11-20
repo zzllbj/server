@@ -574,7 +574,7 @@ public:
   virtual bool add()= 0;
   virtual bool setup(THD *thd) { return false; }
 
-  virtual bool supports_removal() const { return false; }
+  virtual bool supports_removal() { return false; }
   virtual void remove() { DBUG_ASSERT(0); }
 
   virtual void cleanup();
@@ -817,7 +817,7 @@ public:
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_sum_sum>(thd, this); }
 
-  bool supports_removal() const
+  bool supports_removal()
   {
     return true;
   }
@@ -888,7 +888,7 @@ public:
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_sum_count>(thd, this); }
 
-  bool supports_removal() const
+  bool supports_removal()
   {
     return true;
   }
@@ -944,7 +944,7 @@ public:
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_sum_avg>(thd, this); }
 
-  bool supports_removal() const
+  bool supports_removal()
   {
     return true;
   }
@@ -1169,7 +1169,7 @@ public:
     DBUG_ASSERT(0);
   }
 
-  bool supports_removal() const
+  bool supports_removal()
   {
     return true;
   }
@@ -1561,6 +1561,8 @@ public:
 
   void clear();
   bool add();
+  bool supports_removal();
+  void remove();
   void reset_field() {};
   void update_field() {};
   void cleanup();
