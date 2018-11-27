@@ -1163,13 +1163,13 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
   {
     Field *field= *field_ptr;
     if (field->flags & LONG_UNIQUE_HASH_FIELD)
-    {
+    {/*  
       expr_str.length(parse_vcol_keyword.length);
       expr_str.append((char*)field->vcol_info->hash_expr.str, length);
       vcol= unpack_vcol_info_from_frm(thd, mem_root, table, &expr_str,
                                     &(field->vcol_info), error_reported);
       *(vfield_ptr++)= *field_ptr;
-
+*/
     }
     if (field->has_default_now_unireg_check())
     {
@@ -2271,7 +2271,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           //Our goal is to get field no of long unique(a1,a2 .....)
           key_info_ptr+= keys*8;// Why ? answer in create_key_info
           uint field_no, length;
-          List<Item *> *field_list= new (share->mem_root) List<Item* >;
+          List<Item > *field_list= new (&share->mem_root) List<Item >();
           //We havent reseted the user_defined_key_parts yet, reason below
           // why +9 becuase frm_version > 1
           for (uint j= 0; j < keyinfo->user_defined_key_parts; j++,
@@ -2281,17 +2281,17 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
             length= (uint) uint2korr(key_info_ptr + 7);
             Item *l_item;
             if(!length)
-              l_item= new(share->mem_root)Item_field(thd, share->field[field_no]);
+              l_item= new(&share->mem_root)Item_field(thd, share->field[field_no]);
             else
             {
-              l_item= new(share->mem_root)Item_func_left(thd,
-                      new(share->mem_root)Item_field(thd, share->field[field_no]),
-                      new (share->mem_root)Item_int(thd, length));
+              l_item= new(&share->mem_root)Item_func_left(thd,
+                      new(&share->mem_root)Item_field(thd, share->field[field_no]),
+                      new (&share->mem_root)Item_int(thd, (longlong)length));
 
             }
-            field_list.push_back(l_item, share->mem_root);
+            field_list->push_back(l_item, &share->mem_root);
           }
-          Item_func_hash *hash_item= new(share->mem_root)Item_func_hash(thd, field_list);
+          Item_func_hash *hash_item= new(&share->mem_root)Item_func_hash(thd, *field_list);
           Virtual_column_info *v= new (&share->mem_root) Virtual_column_info();
           v->expr= hash_item;
           share->field[field_no]->vcol_info= v;
