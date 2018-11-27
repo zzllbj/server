@@ -4172,7 +4172,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  (key_part_length >= KEY_DEFAULT_PACK_LENGTH &&
 	   (sql_field->real_field_type() == MYSQL_TYPE_STRING ||
 	    sql_field->real_field_type() == MYSQL_TYPE_VARCHAR ||
-	    sql_field->pack_flag & FIELDFLAG_BLOB)))
+	    sql_field->pack_flag & FIELDFLAG_BLOB))&& !is_hash_field_added)
       {
 	if ((column_nr == 0 && (sql_field->pack_flag & FIELDFLAG_BLOB)) ||
             sql_field->real_field_type() == MYSQL_TYPE_VARCHAR)

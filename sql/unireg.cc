@@ -39,7 +39,7 @@
 /* threshold for safe_alloca */
 #define ALLOCA_THRESHOLD       2048
 
-static uint pack_keys(uchar *,uint, KEY *, ulong);
+static uint pack_keys(uchar *,uint, KEY *, ulong, uint);
 static bool pack_header(THD *, uchar *, List<Create_field> &, HA_CREATE_INFO *,
                         ulong, handler *);
 static bool pack_vcols(String *, List<Create_field> &, List<Virtual_column_info> *);
@@ -101,8 +101,6 @@ static uchar *extra2_write_field_properties(uchar *pos,
     uchar flags= cf->invisible;
     if (cf->flags & VERS_UPDATE_UNVERSIONED_FLAG)
       flags|= VERS_OPTIMIZED_UPDATE;
-    if (cf->flags & LONG_UNIQUE_HASH_FIELD)
-      flags|= EXTRA2_LONG_UNIQUE_HASH_FIELD;
     *pos++= flags;
   }
   return pos;
@@ -295,7 +293,10 @@ LEX_CUSTRING build_frm_image(THD *thd, const LEX_CSTRING *table,
     extra2_size+= 1 + (create_fields.elements > 255 ? 3 : 1) +
         create_fields.elements;
   }
-
+  uint e_unique_hash_extra_parts= 0;
+  for (i= 0; i < keys; i++)
+    if (key_info[i].algorithm == HA_KEY_ALG_LONG_HASH)
+      e_unique_hash_extra_parts+= key_info[i].keyparts - 1;
   key_buff_length= uint4korr(fileinfo+47);
 
   frm.length= FRM_HEADER_SIZE;                  // fileinfo;
@@ -363,12 +364,11 @@ LEX_CUSTRING build_frm_image(THD *thd, const LEX_CSTRING *table,
 
   if (has_extra2_field_flags_)
     pos= extra2_write_field_properties(pos, create_fields);
-
   int4store(pos, filepos); // end of the extra2 segment
   pos+= 4;
 
   DBUG_ASSERT(pos == frm_ptr + uint2korr(fileinfo+6));
-  key_info_length= pack_keys(pos, keys, key_info, data_offset);
+  key_info_length= pack_keys(pos, keys, key_info, data_offset, e_unique_hash_extra_parts);
   if (key_info_length > UINT_MAX16)
   {
     my_printf_error(ER_CANT_CREATE_TABLE,
@@ -530,7 +530,7 @@ err_frm:
 /* Pack keyinfo and keynames to keybuff for save in form-file. */
 
 static uint pack_keys(uchar *keybuff, uint key_count, KEY *keyinfo,
-                      ulong data_offset)
+                      ulong data_offset, uint e_unique_hash_extra_parts)
 {
   uint key_parts,length;
   uchar *pos, *keyname_pos;
@@ -592,6 +592,7 @@ static uint pack_keys(uchar *keybuff, uint key_count, KEY *keyinfo,
     }
   }
 
+  key_parts-= e_unique_hash_extra_parts;
   if (key_count > 127 || key_parts > 127)
   {
     keybuff[0]= (key_count & 0x7f) | 0x80;

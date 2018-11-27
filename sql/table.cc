@@ -748,13 +748,7 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
     if (i == 0)
     {
       ext_key_parts+= (share->use_ext_keys ? first_keyinfo->user_defined_key_parts*(keys-1) : 0); 
-      /*
-        Some keys can be HA_LONG_UNIQUE_HASH , but we do not know at this point ,
-        how many ?, but will always be less than or equal to total num of
-        keys. Each HA_LONG_UNIQUE_HASH key require one extra key_part in which
-        it stored hash. On safe side we will allocate memory for each key.
-       */
-      n_length=keys * sizeof(KEY) + (ext_key_parts +keys) * sizeof(KEY_PART_INFO);
+      n_length=keys * sizeof(KEY) + (ext_key_parts) * sizeof(KEY_PART_INFO);
       if (!(keyinfo= (KEY*) alloc_root(&share->mem_root,
 				       n_length + len)))
         return 1;
@@ -779,6 +773,14 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
     keyinfo->rec_per_key= rec_per_key;
     for (j=keyinfo->user_defined_key_parts ; j-- ; key_part++)
     {
+      //It will be handled later
+      //Please note we did not allocated extra n key_parts for long unique(a^1,...a^n)
+      //We have allocated just one key_part and that will point to hash
+      if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
+      {
+        key_part++;
+        break;
+      }
       if (strpos + (new_frm_ver >= 1 ? 9 : 7) >= frm_image_end)
         return 1;
       *rec_per_key++=0;
@@ -807,11 +809,8 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
     }
     if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
     {
-      keyinfo->flags|= HA_LONG_UNIQUE_HASH | HA_NOSAME;
+      keyinfo->flags|= HA_NOSAME;
       keyinfo->key_length= 0;
-      share->ext_key_parts++;
-      // This empty key_part for storing Hash
-      key_part++;
     }
 
     /*
@@ -1163,7 +1162,7 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
   for (field_ptr= table->field; *field_ptr; field_ptr++)
   {
     Field *field= *field_ptr;
-    if (field->vcol_info && (length = field->vcol_info->hash_expr.length))
+    if (field->flags & LONG_UNIQUE_HASH_FIELD)
     {
       expr_str.length(parse_vcol_keyword.length);
       expr_str.append((char*)field->vcol_info->hash_expr.str, length);
@@ -1306,6 +1305,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   bool vers_can_native= false;
   const uchar *extra2_field_flags= 0;
   size_t extra2_field_flags_length= 0;
+  const uchar* key_info_ptr;
 
   MEM_ROOT *old_root= thd->mem_root;
   Virtual_column_info **table_check_constraints;
@@ -1614,6 +1614,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
 
     share->set_use_ext_keys_flag(plugin_hton(se_plugin)->flags & HTON_SUPPORTS_EXTENDED_KEYS);
 
+    key_info_ptr= disk_buff + 6;
     if (create_key_infos(disk_buff + 6, frm_image_end, keys, keyinfo,
                          new_frm_ver, ext_key_parts,
                          share, len, &first_keyinfo, keynames))
@@ -1707,6 +1708,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   }
   else
   {
+    key_info_ptr= disk_buff + 6;
     if (create_key_infos(disk_buff + 6, frm_image_end, keys, keyinfo,
                          new_frm_ver, ext_key_parts,
                          share, len, &first_keyinfo, keynames))
@@ -2133,8 +2135,6 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
       uchar flags= *extra2_field_flags++;
       if (flags & VERS_OPTIMIZED_UPDATE)
         reg_field->flags|= VERS_UPDATE_UNVERSIONED_FLAG;
-      if (flags & EXTRA2_LONG_UNIQUE_HASH_FIELD)
-        reg_field->flags|= LONG_UNIQUE_HASH_FIELD;
       reg_field->invisible= f_visibility(flags);
     }
     if (reg_field->invisible == INVISIBLE_USER)
@@ -2215,26 +2215,15 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
          1. We need set value in hash key_part
          2. Set vcol_info in corresponding db_row_hash_ field
        */
-      if (keyinfo->flags & HA_LONG_UNIQUE_HASH)
+      if (keyinfo->algorithm & HA_LONG_UNIQUE_HASH)
       {
+        /*
         DBUG_ASSERT(share->field[hash_field_used_no]->flags & LONG_UNIQUE_HASH_FIELD);
         hash_keypart= keyinfo->key_part + keyinfo->user_defined_key_parts;
-        /* Last n fields are unique_index_hash fields*/
-        hash_keypart->fieldnr= hash_field_used_no + 1;
-        hash_keypart->length= HA_HASH_KEY_LENGTH_WITHOUT_NULL;
-        hash_keypart->store_length= hash_keypart->length;
-        hash_keypart->type= HA_KEYTYPE_ULONGLONG;
-        hash_keypart->key_part_flag= 0;
-        hash_keypart->key_type= 32834;
-        hash_keypart->offset= share->reclength
-                       - HA_HASH_FIELD_LENGTH*(share->fields - hash_field_used_no);
-        hash_fld= share->field[hash_field_used_no];
         temp_key_part= keyinfo->key_part;
-        Virtual_column_info *v= new (&share->mem_root) Virtual_column_info();
         String hash_str;
         hash_str.append(ha_hash_str.str,ha_hash_str.length);
         hash_str.append(STRING_WITH_LEN("("));
-        for (uint j= 0; j < keyinfo->user_defined_key_parts; j++,
                  temp_key_part++)
         {
           if (j)
@@ -2258,9 +2247,62 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
         hash_str.append(STRING_WITH_LEN(")"));
         char * expr_str= (char *)alloc_root(&share->mem_root, hash_str.length()+1);
         strncpy(expr_str, hash_str.ptr(), hash_str.length());
-        v->hash_expr.str= expr_str;
-        v->hash_expr.length= hash_str.length();
+        //v->hash_expr.str= expr_str;
+        //v->hash_expr.length= hash_str.length();
         hash_fld->vcol_info= v;
+        */
+        /* Last n fields are unique_index_hash fields*/
+        hash_keypart->length= HA_HASH_KEY_LENGTH_WITHOUT_NULL;
+        hash_keypart->store_length= hash_keypart->length;
+        hash_keypart->type= HA_KEYTYPE_ULONGLONG;
+        hash_keypart->key_part_flag= 0;
+        hash_keypart->key_type= 32834;
+        hash_keypart->offset= share->reclength
+                       - HA_HASH_FIELD_LENGTH*(share->fields - hash_field_used_no);
+        hash_keypart->fieldnr= hash_field_used_no + 1;
+        hash_fld= share->field[hash_field_used_no];
+        /*
+           We have to create Item_func_hash for the fields of long unique(a,b..)
+           But since we do not know how many fields , and which fields are there
+           We will look into frm (we have saved key_info_ptr)
+        */
+        if (new_frm_ver > 10)
+        {
+          //Our goal is to get field no of long unique(a1,a2 .....)
+          key_info_ptr+= keys*8;// Why ? answer in create_key_info
+          uint field_no, length;
+          List<Item *> *field_list= new (share->mem_root) List<Item* >;
+          //We havent reseted the user_defined_key_parts yet, reason below
+          // why +9 becuase frm_version > 1
+          for (uint j= 0; j < keyinfo->user_defined_key_parts; j++,
+                  key_info_ptr+=9)
+          {
+            field_no= (uint16) (uint2korr(key_info_ptr) & FIELD_NR_MASK);
+            length= (uint) uint2korr(key_info_ptr + 7);
+            Item *l_item;
+            if(!length)
+              l_item= new(share->mem_root)Item_field(thd, share->field[field_no]);
+            else
+            {
+              l_item= new(share->mem_root)Item_func_left(thd,
+                      new(share->mem_root)Item_field(thd, share->field[field_no]),
+                      new (share->mem_root)Item_int(thd, length));
+
+            }
+            field_list.push_back(l_item, share->mem_root);
+          }
+          Item_func_hash *hash_item= new(share->mem_root)Item_func_hash(thd, field_list);
+          Virtual_column_info *v= new (&share->mem_root) Virtual_column_info();
+          v->expr= hash_item;
+          share->field[field_no]->vcol_info= v;
+          share->field[field_no]->flags|= LONG_UNIQUE_HASH_FIELD;//Currently not used much
+          keyinfo->user_defined_key_parts= 1;
+          keyinfo->usable_key_parts= 1;
+          keyinfo->ext_key_parts= 1;
+
+        }
+        else
+            assert(0);//We cant have long unique in lower frm_versions;
         share->virtual_fields++;
         hash_field_used_no--;
       }

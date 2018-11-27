@@ -543,7 +543,6 @@ public:
   LEX_CSTRING name;                             /* Name of constraint */
   /* see VCOL_* (VCOL_FIELD_REF, ...) */
   uint flags;
-  LEX_CSTRING hash_expr;
 
   Virtual_column_info()
   : vcol_type((enum_vcol_info_type)VCOL_TYPE_NONE),
@@ -553,14 +552,8 @@ public:
   {
     name.str= NULL;
     name.length= 0;
-    hash_expr.str= NULL;
-    hash_expr.length= 0;
   };
-  ~Virtual_column_info()
-  {
-    if (!hash_expr.length)
-      my_free((void *)hash_expr.str);
-  }
+  ~Virtual_column_info();
   enum_vcol_info_type get_vcol_type() const
   {
     return vcol_type;
@@ -1090,7 +1083,7 @@ public:
   virtual int cmp(const uchar *,const uchar *)=0;
   virtual int cmp_binary(const uchar *a,const uchar *b, uint32 max_length=~0U)
   { return memcmp(a,b,pack_length()); }
-  virtual int cmp_offset(long row_offset)
+  virtual int cmp_offset(my_ptrdiff_t row_offset)
   { return cmp(ptr,ptr+row_offset); }
   virtual int cmp_binary_offset(uint row_offset)
   { return cmp_binary(ptr, ptr+row_offset); };

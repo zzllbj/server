@@ -367,7 +367,7 @@ Key Start Len Index   Type
 1   3063  8   multip. ulonglong NULL       
 2   3055  8   multip. ulonglong NULL       
 3   3047  8   multip. ulonglong NULL       
-4   3039  8   multip. ulonglong prefix NULL
+4   3039  8   multip. ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	UNI		select,insert,update,references		NEVER	NULL
@@ -721,9 +721,9 @@ Recordlength:                 5092
 
 table description:
 Key Start Len Index   Type
-1   5081  8   multip. ulonglong prefix NULL
-2   5073  8   multip. ulonglong prefix NULL
-3   5065  8   multip. ulonglong prefix NULL
+1   5081  8   multip. ulonglong NULL       
+2   5073  8   multip. ulonglong NULL       
+3   5065  8   multip. ulonglong NULL       
 4   5057  8   multip. ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION

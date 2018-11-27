@@ -198,7 +198,7 @@ show create table t1;
 alter table t1 add column db_row_hash_7 int, add column db_row_hash_5 int , add column db_row_hash_4 int ;
 alter table t1 drop column db_row_hash_7,drop column db_row_hash_3, drop column db_row_hash_4;
 desc t1;
---echo #this show now break anything;
+--echo #this should not break anything;
 --error ER_DUP_ENTRY
 insert into t1 values(1,2,3,4,5,6,23,5,6);
 --echo #this should also drop the unique index;
