@@ -108,8 +108,10 @@
 */
 
 #include "mariadb.h"
-#include "sql_class.h"
-#include "table.h"
+#include "sql_array.h"
+
+class TABLE;
+class SQL_SELECT;
 
 /* Cost to write into filter */
 #define COST_WRITE      0.01
@@ -117,8 +119,6 @@
 #define CNST_SORT       0.01
 /* Cost to evaluate condition */
 #define COST_COND_EVAL  0.2
-
-class QUICK_RANGE_SELECT;
 
 class Range_filter_cost_info : public Sql_alloc
 {
@@ -130,7 +130,6 @@ public:
   double a;                         // slope of the linear function
   double selectivity;
   double intersect_x_axis_abcissa;
-  SQL_SELECT *select;
 
   /**
     Filter cost functions
@@ -156,7 +155,7 @@ public:
   }
   /* End of filter cost functions */
 
-  Range_filter_cost_info() : table(0), key_no(0), select(0) {}
+  Range_filter_cost_info() : table(0), key_no(0) {}
 
   void init(TABLE *tab, uint key_numb);
 
@@ -179,6 +178,109 @@ public:
   */
   inline double get_filter_gain(double card)
   {  return card*a - b;  }
+};
+
+
+class Refpos_container_ordered_array : public Sql_alloc
+{
+  uint elem_size;
+  uint max_elements;
+  Dynamic_array<char> *array;
+
+public:
+
+  Refpos_container_ordered_array(uint elem_sz, uint max_elems) 
+    : elem_size(elem_sz), max_elements(max_elems) {}
+
+  ~Refpos_container_ordered_array()
+  {
+    delete array;
+    array= 0;
+  }
+
+  bool alloc()
+  {
+    array= new Dynamic_array<char> (elem_size * max_elements,
+                                    elem_size * max_elements/8 + 1);
+    return array == NULL;
+  }
+  
+  bool add(char *elem)
+  {
+    for (uint i= 0; i < elem_size; i++)
+    {
+      if (array->append(elem[i]))
+	return true;
+    }
+    return false;
+  }
+
+  char *get_pos(uint n)
+  {
+    return array->get_pos(n * elem_size);
+  }
+
+  uint elements() { return array->elements() / elem_size; }
+
+  void sort (int (*cmp) (void *ctxt, const void *el1, const void *el2),
+                         void *cmp_arg)
+  {
+    my_qsort2(array->front(), array->elements()/elem_size,
+              elem_size, (qsort2_cmp) cmp, cmp_arg);
+  }   
+};
+
+class Range_filter_ordered_array : public Sql_alloc
+{
+  TABLE *table;
+  SQL_SELECT *select;
+  bool container_is_filled;
+  Refpos_container_ordered_array refpos_container;
+
+public:
+  Range_filter_ordered_array(TABLE *tab, SQL_SELECT *sel, uint elems)
+    : table(tab), select(sel), container_is_filled(false),
+      refpos_container(table->file->ref_length, elems)
+  {}
+
+  ~Range_filter_ordered_array();
+
+  SQL_SELECT *get_select() { return select; }
+
+  bool alloc() { return refpos_container.alloc(); }
+
+  bool is_filled() { return container_is_filled; }
+
+  bool fill();
+  
+  bool sort();
+
+  bool check(char *elem);
+};
+
+class Rowid_filter : public Sql_alloc
+{
+  Range_filter_cost_info *cost_info;
+  Range_filter_ordered_array *container;
+
+public:
+  Rowid_filter(Range_filter_cost_info *cost_arg,
+               Range_filter_ordered_array *container_arg)
+    : cost_info(cost_arg), container(container_arg) {}
+
+  Range_filter_ordered_array *get_container() { return container; }
+
+  ~Rowid_filter()
+  {
+    delete container;
+  }
+
+  bool is_active()
+  { 
+    return get_container()->is_filled();
+  }
+
+  bool check(char *buf) { return get_container()->check(buf); }
 };
 
 #endif /* ROWID_FILTER_INCLUDED */

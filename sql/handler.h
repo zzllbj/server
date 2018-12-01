@@ -47,6 +47,7 @@
 class Alter_info;
 class Virtual_column_info;
 class sequence_definition;
+class Rowid_filter;
 
 // the following is for checking tables
 
@@ -2790,6 +2791,9 @@ public:
 
 extern "C" enum icp_result handler_index_cond_check(void* h_arg);
 
+extern "C" int handler_rowid_filter_check(void* h_arg);
+extern "C" int handler_rowid_filter_is_active(void* h_arg);
+
 uint calculate_key_len(TABLE *, uint, const uchar *, key_part_map);
 /*
   bitmap with first N+1 bits set
@@ -2956,6 +2960,9 @@ public:
   Item *pushed_idx_cond;
   uint pushed_idx_cond_keyno;  /* The index which the above condition is for */
 
+  Rowid_filter *pushed_rowid_filter;
+  bool rowid_filter_is_active;
+
   Discrete_interval auto_inc_interval_for_cur_row;
   /**
      Number of reserved auto-increment intervals. Serves as a heuristic
@@ -3020,6 +3027,8 @@ public:
     tracker(NULL),
     pushed_idx_cond(NULL),
     pushed_idx_cond_keyno(MAX_KEY),
+    pushed_rowid_filter(NULL),
+    rowid_filter_is_active(0),
     auto_inc_intervals_count(0),
     m_psi(NULL), set_top_table_fields(FALSE), top_table(0),
     top_table_field(0), top_table_fields(0),
@@ -4045,6 +4054,14 @@ public:
    pushed_idx_cond_keyno= MAX_KEY;
    in_range_check_pushed_down= false;
  }
+
+ virtual void cancel_pushed_rowid_filter()
+ {
+   pushed_rowid_filter= NULL;
+   rowid_filter_is_active= false;
+ }
+
+ virtual bool rowid_filter_push(Rowid_filter *rowid_filter) { return true; }
 
  /* Needed for partition / spider */
   virtual TABLE_LIST *get_next_global_for_child() { return NULL; }

@@ -1,4 +1,9 @@
+#include "mariadb.h"
+#include "table.h"
+#include "sql_class.h"
+#include "opt_range.h"
 #include "rowid_filter.h"
+#include "sql_select.h"
 
 
 /**
@@ -89,6 +94,7 @@ void TABLE::prune_range_filters()
       range_filter_cost_info_elements--;
       swap_variables(Range_filter_cost_info, range_filter_cost_info[i],
                      range_filter_cost_info[range_filter_cost_info_elements]);
+      i--;
       continue;
     }
     for (uint j= i+1; j < range_filter_cost_info_elements; j++)
@@ -203,9 +209,12 @@ Range_filter_cost_info
   double best_filter_improvement= 0.0;
   best_filter= 0;
 
+  key_map *intersected_with= &key_info->intersected_with;
   for (uint i= best_filter_count; i < range_filter_cost_info_elements; i++)
   {
     Range_filter_cost_info *filter= &range_filter_cost_info[i];
+    if (intersected_with->is_set(filter->key_no))
+      continue;
     if (card < filter->intersect_x_axis_abcissa)
       break;
     if (best_filter_improvement < filter->get_filter_gain(card))
@@ -217,3 +226,92 @@ Range_filter_cost_info
   return best_filter;
 }
 
+
+bool Range_filter_ordered_array::fill()
+{
+  int rc= 0;
+  handler *file= table->file;
+  THD *thd= table->in_use;
+  QUICK_RANGE_SELECT* quick= (QUICK_RANGE_SELECT*) select->quick;
+  Item *pushed_idx_cond_save = file->pushed_idx_cond;
+  uint pushed_idx_cond_keyno_save= file->pushed_idx_cond_keyno;
+  bool in_range_check_pushed_down_save= file->in_range_check_pushed_down;
+
+  file->pushed_idx_cond= 0;
+  file->pushed_idx_cond_keyno= MAX_KEY;
+  file->in_range_check_pushed_down= false;
+
+  /* We're going to just read rowids. */
+  table->prepare_for_position();
+
+  table->file->ha_start_keyread(quick->index);
+
+  if (quick->init() || quick->reset())
+    rc= 1;
+
+  while (!rc)
+  {
+    rc= quick->get_next();
+    if (thd->killed)
+      rc= 1;
+    if (!rc)
+    {
+      file->position(quick->record);
+      if (refpos_container.add((char*) file->ref))
+        rc= 1;
+    }
+  }
+
+  quick->range_end();
+  table->file->ha_end_keyread();
+  file->pushed_idx_cond= pushed_idx_cond_save;
+  file->pushed_idx_cond_keyno= pushed_idx_cond_keyno_save;
+  file->in_range_check_pushed_down= in_range_check_pushed_down_save;
+  if (rc != HA_ERR_END_OF_FILE)
+    return 1;
+  container_is_filled= true;
+  table->file->rowid_filter_is_active= true;
+  return 0;
+}
+
+
+bool Range_filter_ordered_array::sort()
+{
+  refpos_container.sort(refpos_order_cmp, (void *) (table->file));
+  return false;
+}
+
+
+bool Range_filter_ordered_array::check(char *elem)
+{
+  int l= 0;
+  int r= refpos_container.elements()-1;
+  while (l <= r)
+  {
+    int m= (l + r) / 2;
+    int cmp= refpos_order_cmp((void *) (table->file),
+                              refpos_container.get_pos(m), elem);
+    if (cmp == 0)
+      return true;
+    if (cmp < 0)
+      l= m + 1;
+    else
+      r= m-1;
+  }
+  return false;
+}
+
+
+Range_filter_ordered_array::~Range_filter_ordered_array()
+{
+  if (select)
+  {
+    if (select->quick)
+    {
+      delete select->quick;
+      select->quick= 0;
+    }
+    delete select;
+    select= 0;
+  }
+}

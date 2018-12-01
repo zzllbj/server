@@ -3920,10 +3920,12 @@ row_search_idx_cond_check(
 	ut_ad(rec_offs_validate(rec, prebuilt->index, offsets));
 
 	if (!prebuilt->idx_cond) {
-		return(ICP_MATCH);
-	}
-
-	MONITOR_INC(MONITOR_ICP_ATTEMPTS);
+	        if (!(innobase_pk_filter_is_active(prebuilt->pk_filter))) {
+		        return(ICP_MATCH);
+                }
+	} else {
+	        MONITOR_INC(MONITOR_ICP_ATTEMPTS);
+        }
 
 	/* Convert to MySQL format those fields that are needed for
 	evaluating the index condition. */
@@ -3954,9 +3956,25 @@ row_search_idx_cond_check(
 	index, if the case of the column has been updated in
 	the past, or a record has been deleted and a record
 	inserted in a different case. */
-	result = innobase_index_cond(prebuilt->idx_cond);
+        if (prebuilt->idx_cond) {
+	        result = innobase_index_cond(prebuilt->idx_cond);
+        } else {
+	        result = ICP_MATCH;
+        }
 	switch (result) {
 	case ICP_MATCH:
+	        if (innobase_pk_filter_is_active(prebuilt->pk_filter)) {
+		         bool pkf_result;
+                         MONITOR_INC(MONITOR_PK_FILTER_CHECKS);
+                         pkf_result = innobase_pk_filter(prebuilt->pk_filter);
+                         if (pkf_result) {
+                                 MONITOR_INC(MONITOR_PK_FILTER_POSITIVE);
+                         } else {
+                                 MONITOR_INC(MONITOR_PK_FILTER_NEGATIVE);
+                                 MONITOR_INC(MONITOR_ICP_MATCH);
+                                 return(ICP_NO_MATCH);
+			 }
+                }
 		/* Convert the remaining fields to MySQL format.
 		If this is a secondary index record, we must defer
 		this until we have fetched the clustered index record. */

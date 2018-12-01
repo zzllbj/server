@@ -43,6 +43,7 @@
 #include "debug_sync.h"         // DEBUG_SYNC
 #include "sql_audit.h"
 #include "ha_sequence.h"
+#include "rowid_filter.h"
 
 #ifdef WITH_PARTITION_STORAGE_ENGINE
 #include "ha_partition.h"
@@ -5766,6 +5767,27 @@ extern "C" enum icp_result handler_index_cond_check(void* h_arg)
   return res;
 }
 
+
+/**
+  Rowid filter callback - to be called by an engine to check rowid / primary
+  keys of the rows whose data is to be fetched against the set rowid filter
+*/
+extern "C" int handler_rowid_filter_check(void *h_arg)
+{
+  handler *h= (handler*) h_arg;
+  TABLE *tab= h->get_table();
+  h->position(tab->record[0]);
+  return h->pushed_rowid_filter->check((char *) h->ref);
+}
+
+extern "C" int handler_rowid_filter_is_active(void *h_arg)
+{
+  if (!h_arg)
+    return false;
+  handler *h= (handler*) h_arg;
+  return h->rowid_filter_is_active;
+}
+
 int handler::index_read_idx_map(uchar * buf, uint index, const uchar * key,
                                 key_part_map keypart_map,
                                 enum ha_rkey_function find_flag)
@@ -6230,6 +6252,7 @@ int handler::ha_reset()
   /* Reset information about pushed engine conditions */
   cancel_pushed_idx_cond();
   /* Reset information about pushed index conditions */
+  cancel_pushed_rowid_filter();
   clear_top_table_fields();
   DBUG_RETURN(reset());
 }

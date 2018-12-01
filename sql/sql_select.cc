@@ -1465,10 +1465,9 @@ int JOIN::optimize()
 }
 
 
-bool
-JOIN::make_range_filter_select(SQL_SELECT *select)
+bool JOIN::make_range_filters()
 {
-  DBUG_ENTER("make_range_filter_selects");
+  DBUG_ENTER("make_range_filters");
 
   JOIN_TAB *tab;
 
@@ -1480,12 +1479,13 @@ JOIN::make_range_filter_select(SQL_SELECT *select)
     {
       int err;
       SQL_SELECT *sel;
+      uint elems;
+      Range_filter_ordered_array *filter_container= NULL;
       Item **sargable_cond= get_sargable_cond(this, tab->table);
       sel= make_select(tab->table, const_table_map, const_table_map,
                        *sargable_cond, (SORT_INFO*) 0, 1, &err);
       if (!sel)
         DBUG_RETURN(1);
-      tab->filter->select= sel;
 
       key_map filter_map;
       filter_map.clear_all();
@@ -1499,10 +1499,45 @@ JOIN::make_range_filter_select(SQL_SELECT *select)
       if (thd->is_error())
         DBUG_RETURN(1);
       DBUG_ASSERT(sel->quick);
+      elems= (uint) tab->filter->cardinality;
+      filter_container=
+        new (thd->mem_root) Range_filter_ordered_array(tab->table, sel, elems);
+      if (filter_container)
+      {
+        tab->rowid_filter=
+          new (thd->mem_root) Rowid_filter(tab->filter, filter_container);
+      }
     }
   }
   DBUG_RETURN(0);
 }
+
+
+bool
+JOIN::init_range_filters()
+{
+  DBUG_ENTER("init_range_filters");
+
+  JOIN_TAB *tab;
+
+  for (tab= first_linear_tab(this, WITH_BUSH_ROOTS, WITHOUT_CONST_TABLES);
+       tab;
+       tab= next_linear_tab(this, tab, WITH_BUSH_ROOTS))
+  {
+    if (!tab->rowid_filter)
+      continue;
+    if (tab->rowid_filter->get_container()->alloc())
+    {
+      delete tab->rowid_filter;
+      tab->rowid_filter= 0;
+      continue;
+    }
+    tab->table->file->rowid_filter_push(tab->rowid_filter);
+    tab->is_rowid_filter_filled= false;
+  }
+  DBUG_RETURN(0);
+}
+
 
 int JOIN::init_join_caches()
 {
@@ -2022,7 +2057,7 @@ int JOIN::optimize_stage2()
   if (get_best_combination())
     DBUG_RETURN(1);
   
-  if (make_range_filter_select(select))
+  if (make_range_filters())
     DBUG_RETURN(1);
 
   if (select_lex->handle_derived(thd->lex, DT_OPTIMIZE))
@@ -2687,6 +2722,9 @@ int JOIN::optimize_stage2()
     DBUG_RETURN(1);
 
   if (init_join_caches())
+    DBUG_RETURN(1);
+
+  if (init_range_filters())
     DBUG_RETURN(1);
 
   error= 0;
@@ -12508,6 +12546,24 @@ bool error_if_full_join(JOIN *join)
 }
 
 
+void JOIN_TAB::fill_range_filter_if_needed()
+{
+  if (rowid_filter && !is_rowid_filter_filled)
+  {
+    if (!rowid_filter->get_container()->fill())
+    {
+      rowid_filter->get_container()->sort();
+      is_rowid_filter_filled= true;
+    }
+    else
+    {
+      delete rowid_filter;
+      rowid_filter= 0;
+    }
+  }
+}
+
+
 /**
   cleanup JOIN_TAB.
 
@@ -12531,15 +12587,10 @@ void JOIN_TAB::cleanup()
   select= 0;
   delete quick;
   quick= 0;
-  if (filter && filter->select)
+  if (rowid_filter)
   {
-      if (filter->select->quick)
-      {
-        delete filter->select->quick;
-        filter->select->quick= 0;
-      }
-      delete filter->select;
-      filter->select= 0;
+    delete rowid_filter;
+    rowid_filter= 0;
   }
   if (cache)
   {
@@ -19424,6 +19475,8 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   if (!join_tab->preread_init_done && join_tab->preread_init())
     DBUG_RETURN(NESTED_LOOP_ERROR);
 
+  join_tab->fill_range_filter_if_needed();
+
   join->return_tab= join_tab;
 
   if (join_tab->last_inner)
@@ -20382,6 +20435,9 @@ int join_init_read_record(JOIN_TAB *tab)
                   tab->join->thd->reset_killed(););
   if (!tab->preread_init_done  && tab->preread_init())
     return 1;
+
+  tab->fill_range_filter_if_needed();
+  
   if (init_read_record(&tab->read_record, tab->join->thd, tab->table,
                        tab->select, tab->filesort_result, 1,1, FALSE))
     return 1;
@@ -25267,7 +25323,7 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
   {
     eta->key.set_filter(thd->mem_root,
                         &filter->table->key_info[filter->key_no],
-                        filter->select->quick->max_used_key_length);
+      rowid_filter->get_container()->get_select()->quick->max_used_key_length);
   }
 
   if (tab_type == JT_NEXT)

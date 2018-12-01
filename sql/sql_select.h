@@ -510,10 +510,11 @@ typedef struct st_join_table {
   uint n_sj_tables;
 
   bool preread_init_done;
-  /* Copy of POSITION::filter, set by get_best_combination() */
   Range_filter_cost_info *filter;
-  Dynamic_array<char*> rowid_filter_pk;
+  Rowid_filter *rowid_filter;
+  bool is_rowid_filter_filled;
 
+  void fill_range_filter_if_needed();
   void cleanup();
   inline bool is_using_loose_index_scan()
   {
@@ -890,6 +891,7 @@ public:
 
 
 class Range_filter_cost_info;
+class Rowid_filter;
 
 
 /**
@@ -1625,7 +1627,8 @@ public:
   bool optimize_unflattened_subqueries();
   bool optimize_constant_subqueries();
   int init_join_caches();
-  bool make_range_filter_select(SQL_SELECT *select);
+  bool make_range_filters();
+  bool init_range_filters();
   bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
 			  bool before_group_by, bool recompute= FALSE);
 

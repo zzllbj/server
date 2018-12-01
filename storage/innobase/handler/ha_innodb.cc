@@ -3461,6 +3461,10 @@ ha_innobase::reset_template(void)
 		in ha_innobase::write_row(). */
 		m_prebuilt->template_type = ROW_MYSQL_NO_TEMPLATE;
 	}
+        if (m_prebuilt->pk_filter) {
+	        m_prebuilt->pk_filter = NULL;
+                m_prebuilt->template_type = ROW_MYSQL_NO_TEMPLATE;
+        }
 }
 
 /*****************************************************************//**
@@ -7553,6 +7557,13 @@ ha_innobase::build_template(
 	/* Below we check column by column if we need to access
 	the clustered index. */
 
+        if (pushed_rowid_filter) {
+                fetch_primary_key_cols = TRUE;
+                m_prebuilt->pk_filter = this;
+        } else {
+	        m_prebuilt->pk_filter = NULL;
+        }
+                	
 	n_fields = (ulint) mysql_fields(table);
 
 	if (!m_prebuilt->mysql_template) {
@@ -20318,6 +20329,22 @@ innobase_index_cond(
 	return handler_index_cond_check(file);
 }
 
+bool
+innobase_pk_filter(
+/*===============*/
+	void* file)     /*!< in/out: pointer to ha_innobase */
+{
+        return handler_rowid_filter_check(file);
+}
+
+bool
+innobase_pk_filter_is_active(
+/*==========================*/
+	void* file)     /*!< in/out: pointer to ha_innobase */
+{
+  return handler_rowid_filter_is_active(file);
+}
+
 /** Parse the table file name into table name and database name.
 @param[in]	tbl_name	InnoDB table name
 @param[out]	dbname		database name buffer (NAME_LEN + 1 bytes)
@@ -20851,6 +20878,21 @@ ha_innobase::idx_cond_push(
 	in_range_check_pushed_down = TRUE;
 	/* We will evaluate the condition entirely */
 	DBUG_RETURN(NULL);
+}
+
+
+/** Push primary key filter.
+@param[in] pk_filter  PK filter against which primary keys
+                      are to be checked */
+
+bool 
+ha_innobase::rowid_filter_push(
+        class Rowid_filter* pk_filter)
+{
+        DBUG_ENTER("ha_innobase::rowid_filter_push");
+	DBUG_ASSERT(pk_filter != NULL);
+        pushed_rowid_filter= pk_filter;
+        DBUG_RETURN(FALSE);
 }
 
 /******************************************************************//**

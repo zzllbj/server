@@ -1228,6 +1228,37 @@ static const Type_handler *old_frm_type_handler(uint pack_flag,
 }
 
 
+void TABLE_SHARE::set_intersected_keys()
+{
+  KEY *key1= key_info;
+  for (uint i= 0; i < keys; i++, key1++)
+  {
+    key1->intersected_with.clear_all();
+  }
+  key1= key_info;
+  for (uint i= 0; i < keys; i++, key1++)
+  {
+    KEY *key2= key1 + 1;
+    for (uint j= i+1; j < keys; j++, key2++)
+    {
+      KEY_PART_INFO *key_part1= key1->key_part;
+      KEY_PART_INFO *key_part2= key2->key_part;
+      uint n= key1->user_defined_key_parts;
+      set_if_smaller(n, key2->user_defined_key_parts);
+      for (uint k= 0; k < n; k++, key_part1++, key_part2++)
+      {
+        if (key_part1->fieldnr == key_part2->fieldnr)
+	{
+          key1->intersected_with.set_bit(j);
+          key2->intersected_with.set_bit(i);
+          break;
+        }
+      } 
+    }
+  }
+}
+
+
 /**
   Read data from a binary .frm file image into a TABLE_SHARE
 
@@ -2521,6 +2552,8 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
     bfill(share->default_values + (null_flags - (uchar*) record),
           null_length, 255);
   }
+
+  set_intersected_keys();
 
   /* Handle virtual expressions */
   if (vcol_screen_length && share->frm_version >= FRM_VER_EXPRESSSIONS)

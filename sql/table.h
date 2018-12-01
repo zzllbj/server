@@ -1002,6 +1002,8 @@ struct TABLE_SHARE
 
   /* frees the memory allocated in read_frm_image */
   void free_frm_image(const uchar *frm);
+
+  void set_intersected_keys();
 };
 
 
