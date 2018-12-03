@@ -43,8 +43,6 @@
 #include "rpl_filter.h"
 #include "sql_cte.h"
 #include "ha_sequence.h"
-#include "sql_show.h"
-#include "my_base.h"
 
 /* For MySQL 5.7 virtual fields */
 #define MYSQL57_GENERATED_FIELD 128
@@ -778,8 +776,8 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
       //We have allocated just one key_part and that will point to hash
       if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
       {
-        key_part++;
-        break;
+        strpos+=9;
+        continue;
       }
       if (strpos + (new_frm_ver >= 1 ? 9 : 7) >= frm_image_end)
         return 1;
@@ -810,7 +808,7 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
     if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
     {
       keyinfo->flags|= HA_NOSAME;
-      keyinfo->key_length= 0;
+      keyinfo->key_length= HA_HASH_KEY_LENGTH_WITHOUT_NULL;
     }
 
     /*
@@ -845,7 +843,10 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
       if (j == first_key_parts)
         keyinfo->ext_key_flags= keyinfo->flags | HA_EXT_NOSAME;
     }
-    share->ext_key_parts+= keyinfo->ext_key_parts;  
+    if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
+      share->ext_key_parts++;
+    else
+      share->ext_key_parts+= keyinfo->ext_key_parts;
   }
   keynames=(char*) key_part;
   strpos+= strnmov(keynames, (char *) strpos, frm_image_end - strpos) - keynames;
@@ -1160,16 +1161,33 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
 
   /* Now, initialize CURRENT_TIMESTAMP and UNIQUE_INDEX_HASH_FIELD fields */
   for (field_ptr= table->field; *field_ptr; field_ptr++)
-  {
+  { 
     Field *field= *field_ptr;
     if (field->flags & LONG_UNIQUE_HASH_FIELD)
-    {/*  
-      expr_str.length(parse_vcol_keyword.length);
-      expr_str.append((char*)field->vcol_info->hash_expr.str, length);
-      vcol= unpack_vcol_info_from_frm(thd, mem_root, table, &expr_str,
-                                    &(field->vcol_info), error_reported);
+    { 
+      Item *temp, **arguments= ((Item_func_hash *)field->vcol_info->expr)->arguments();
+      Item *list_item;
+      uint count= ((Item_func_hash *)field->vcol_info->expr)->argument_count();
+      List<Item > *field_list= new (mem_root) List<Item >();
+      for (uint i=0; i < count; i++)
+      {
+        temp= arguments[i];
+        if (temp->type() == Item::CONST_ITEM)
+        {
+          list_item= new(mem_root)Item_field(thd, table->field[temp->val_int() -1]);
+        }
+        else
+        {
+          Item **l_arguments= ((Item_func_left *)temp)->arguments();
+          list_item= new(mem_root)Item_func_left(thd,
+                      new (mem_root)Item_field(thd, table->field[l_arguments[0]->val_int()]),
+                      new (mem_root) Item_int(thd, l_arguments[1]->val_int()));
+        }
+        field_list->push_back(list_item, mem_root);
+      }
+      Item_func_hash *hash_item= new(mem_root)Item_func_hash(thd, *field_list);
+      field->vcol_info->expr= hash_item;
       *(vfield_ptr++)= *field_ptr;
-*/
     }
     if (field->has_default_now_unireg_check())
     {
@@ -2208,18 +2226,17 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
     keyinfo= share->key_info;
     uint hash_field_used_no= share->fields -1 ;
     KEY_PART_INFO *hash_keypart, *temp_key_part;
-    Field *hash_fld, *temp_fld;
+    Field *hash_field, *temp_field;
     for (uint i= 0; i < share->keys; i++, keyinfo++)
     {
        /*
          1. We need set value in hash key_part
          2. Set vcol_info in corresponding db_row_hash_ field
        */
-      if (keyinfo->algorithm & HA_LONG_UNIQUE_HASH)
+      if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
       {
         /*
         DBUG_ASSERT(share->field[hash_field_used_no]->flags & LONG_UNIQUE_HASH_FIELD);
-        hash_keypart= keyinfo->key_part + keyinfo->user_defined_key_parts;
         temp_key_part= keyinfo->key_part;
         String hash_str;
         hash_str.append(ha_hash_str.str,ha_hash_str.length);
@@ -2251,26 +2268,31 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
         //v->hash_expr.length= hash_str.length();
         hash_fld->vcol_info= v;
         */
-        /* Last n fields are unique_index_hash fields*/
+        hash_keypart= keyinfo->key_part;
         hash_keypart->length= HA_HASH_KEY_LENGTH_WITHOUT_NULL;
         hash_keypart->store_length= hash_keypart->length;
         hash_keypart->type= HA_KEYTYPE_ULONGLONG;
         hash_keypart->key_part_flag= 0;
         hash_keypart->key_type= 32834;
+        /* Last n fields are unique_index_hash fields*/
         hash_keypart->offset= share->reclength
                        - HA_HASH_FIELD_LENGTH*(share->fields - hash_field_used_no);
         hash_keypart->fieldnr= hash_field_used_no + 1;
-        hash_fld= share->field[hash_field_used_no];
+        hash_field= share->field[hash_field_used_no];
         /*
            We have to create Item_func_hash for the fields of long unique(a,b..)
            But since we do not know how many fields , and which fields are there
            We will look into frm (we have saved key_info_ptr)
         */
-        if (new_frm_ver > 10)
+        if (new_frm_ver >= 4) //Idk why frm version is 4 I thought it will >=10
         {
           //Our goal is to get field no of long unique(a1,a2 .....)
           key_info_ptr+= keys*8;// Why ? answer in create_key_info
-          uint field_no, length;
+          int field_no, length;
+          Field *hash_fld;
+          //We have to remove entry from thd->free_list
+          Item *temp_free_list= thd->free_list;
+          Item *l_item;
           List<Item > *field_list= new (&share->mem_root) List<Item >();
           //We havent reseted the user_defined_key_parts yet, reason below
           // why +9 becuase frm_version > 1
@@ -2278,15 +2300,25 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
                   key_info_ptr+=9)
           {
             field_no= (uint16) (uint2korr(key_info_ptr) & FIELD_NR_MASK);
-            length= (uint) uint2korr(key_info_ptr + 7);
-            Item *l_item;
+            temp_field= share->field[field_no];
+            length= uint2korr(key_info_ptr + 7);
+            /*
+               We wont add Item_field because it requires field->table object
+               which is not created yet , second thing we dont need Item_field
+               just Item_int will do its purpose, in open_table_from_frm we will
+               create item_field using field no from item_int
+             */
+            //TODO a much better be have item list with X field no
+            // if there is length then -1 X(field no) Y(length)
+            // So suppose if we unique(a,b(2000),c)
+            // 1, -1 , 2, 2000,3
             if(!length)
-              l_item= new(&share->mem_root)Item_field(thd, share->field[field_no]);
+              l_item= new(&share->mem_root)Item_int(thd, field_no);
             else
             {
               l_item= new(&share->mem_root)Item_func_left(thd,
-                      new(&share->mem_root)Item_field(thd, share->field[field_no]),
-                      new (&share->mem_root)Item_int(thd, (longlong)length));
+                      new(&share->mem_root)Item_int(thd, field_no),
+                      new (&share->mem_root)Item_int(thd, length));
 
             }
             field_list->push_back(l_item, &share->mem_root);
@@ -2294,11 +2326,12 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           Item_func_hash *hash_item= new(&share->mem_root)Item_func_hash(thd, *field_list);
           Virtual_column_info *v= new (&share->mem_root) Virtual_column_info();
           v->expr= hash_item;
-          share->field[field_no]->vcol_info= v;
-          share->field[field_no]->flags|= LONG_UNIQUE_HASH_FIELD;//Currently not used much
+          hash_field->vcol_info= v;
+          hash_field->flags|= LONG_UNIQUE_HASH_FIELD;//Used in parse_vcol_defs
           keyinfo->user_defined_key_parts= 1;
           keyinfo->usable_key_parts= 1;
           keyinfo->ext_key_parts= 1;
+          thd->free_list= temp_free_list;
 
         }
         else
@@ -2481,8 +2514,6 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
       key_part= keyinfo->key_part;
       uint key_parts= share->use_ext_keys ? keyinfo->ext_key_parts :
 	                                    keyinfo->user_defined_key_parts;
-      if (keyinfo->flags & HA_LONG_UNIQUE_HASH)
-        key_parts++;
       for (i=0; i < key_parts; key_part++, i++)
       {
         Field *field;
@@ -3460,8 +3491,6 @@ enum open_frm_error open_table_from_share(THD *thd, TABLE_SHARE *share,
 
       key_part_end= key_part + (share->use_ext_keys ? key_info->ext_key_parts :
 			                              key_info->user_defined_key_parts) ;
-      if (key_info->flags & HA_LONG_UNIQUE_HASH)
-        key_part_end++;
       for ( ; key_part < key_part_end; key_part++)
       {
         Field *field= key_part->field= outparam->field[key_part->fieldnr - 1];

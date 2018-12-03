@@ -2710,7 +2710,7 @@ int handler::ha_open(TABLE *table_arg, const char *name, int mode,
               test_if_locked));
 
   table= table_arg;
-  setup_table_hash(table);
+  //setup_table_hash(table);
   DBUG_ASSERT(table->s == table_share);
   DBUG_ASSERT(m_lock_type == F_UNLCK);
   DBUG_PRINT("info", ("old m_lock_type: %d F_UNLCK %d", m_lock_type, F_UNLCK));
@@ -2727,7 +2727,7 @@ int handler::ha_open(TABLE *table_arg, const char *name, int mode,
       error=open(name,O_RDONLY,test_if_locked);
     }
   }
-  re_setup_table(table);
+  //re_setup_table(table);
   if (unlikely(error))
   {
     my_errno= error;                            /* Safeguard */
@@ -4631,9 +4631,9 @@ handler::ha_create(const char *name, TABLE *form, HA_CREATE_INFO *info_arg)
 {
   DBUG_ASSERT(m_lock_type == F_UNLCK);
   mark_trx_read_write();
-  setup_table_hash(form);
+  //setup_table_hash(form);
   int error= create(name, form, info_arg);
-  re_setup_table(form);
+  //re_setup_table(form);
   if (!error &&
       !(info_arg->options & (HA_LEX_CREATE_TMP_TABLE | HA_CREATE_TMP_ALTER)))
     mysql_audit_create_table(form);
@@ -6451,21 +6451,21 @@ int handler::ha_write_row(uchar *buf)
   DBUG_ENTER("handler::ha_write_row");
   DEBUG_SYNC_C("ha_write_row_start");
 
-  setup_table_hash(table);
+ // setup_table_hash(table);
   MYSQL_INSERT_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
   increment_statistics(&SSV::ha_write_count);
 
   if ((error= check_duplicate_long_entries(table, table->file, buf)))
   {
-    re_setup_table(table);
+    //re_setup_table(table);
     DBUG_RETURN(error);
   }
   TABLE_IO_WAIT(tracker, m_psi, PSI_TABLE_WRITE_ROW, MAX_KEY, 0,
                       { error= write_row(buf); })
 
   MYSQL_INSERT_ROW_DONE(error);
-  re_setup_table(table);
+  //re_setup_table(table);
   if (likely(!error) && !row_already_logged)
   {
     rows_changed++;
@@ -6490,13 +6490,13 @@ int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
   DBUG_ASSERT(new_data == table->record[0]);
   DBUG_ASSERT(old_data == table->record[1]);
 
-  setup_table_hash(table);
+ // setup_table_hash(table);
   MYSQL_UPDATE_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
   increment_statistics(&SSV::ha_update_count);
   if ((error= check_duplicate_long_entries_update(table, table->file, (uchar *)new_data)))
   {
-    re_setup_table(table);
+    //re_setup_table(table);
     return error;
   }
 
@@ -6509,7 +6509,7 @@ int handler::ha_update_row(const uchar *old_data, const uchar *new_data)
     rows_changed++;
     error= binlog_log_row(table, old_data, new_data, log_func);
   }
-  re_setup_table(table);
+  //re_setup_table(table);
   return error;
 }
 

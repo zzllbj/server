@@ -356,7 +356,7 @@ Item::Item(THD *thd):
    /* Initially this item is not attached to any JOIN_TAB. */
   join_tab_idx= MAX_TABLES;
 
-  /* Put item in free list so that we can free all items at end */
+  /* Put item in free list so that we can free all items at end only if*/
   next= thd->free_list;
   thd->free_list= this;
   /*
