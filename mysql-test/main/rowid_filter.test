@@ -139,4 +139,10 @@ FROM orders JOIN lineitem ON o_orderkey=l_orderkey
 WHERE l_shipdate BETWEEN '1997-01-09' AND '1997-01-10' AND
       l_receiptdate BETWEEN '1997-01-09' AND '1997-01-10';
 
+--echo # Same as above but EXPLAIN FORMAT=JSON:
+EXPLAIN FORMAT=JSON SELECT *
+FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+WHERE l_shipdate BETWEEN '1997-01-09' AND '1997-01-10' AND
+      l_receiptdate BETWEEN '1997-01-09' AND '1997-01-10';
+
 DROP DATABASE dbt3_s001;

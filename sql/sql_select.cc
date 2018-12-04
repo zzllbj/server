@@ -25167,21 +25167,6 @@ int append_possible_keys(MEM_ROOT *alloc, String_list &list, TABLE *table,
 }
 
 
-/**
-  This method saves the data that should be printed in EXPLAIN
-  if any filter was used for this table.
-*/
-
-bool JOIN_TAB::save_filter_explain_data(Explain_table_access *eta)
-{
-  if (!filter)
-    return 0;
-  (filter->selectivity*100 >= 1) ? eta->filter_perc= round(filter->selectivity*100) :
-                                   eta->filter_perc= 1;
-  return 0;
-}
-
-
 bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
                                  table_map prefix_tables, 
                                  bool distinct_arg, JOIN_TAB *first_top_tab)
@@ -25217,7 +25202,7 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
                                                     filesort)))
       return 1;
   }
-  
+  // psergey-todo: data for filtering!
   tracker= &eta->tracker;
   jbuf_tracker= &eta->jbuf_tracker;
 
@@ -25318,12 +25303,16 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
   // psergey-todo: ^ check for error return code 
 
   /* Build "key", "key_len", and "ref" */
-
   if (filter)
   {
-    eta->key.set_filter(thd->mem_root,
-                        &filter->table->key_info[filter->key_no],
-      rowid_filter->get_container()->get_select()->quick->max_used_key_length);
+    QUICK_SELECT_I *quick= rowid_filter->get_container()->get_select()->quick;
+
+    Explain_rowid_filter *erf= new (thd->mem_root) Explain_rowid_filter;
+    erf->quick= quick->get_explain(thd->mem_root);
+    erf->selectivity= filter->selectivity;
+    erf->rows= quick->records;
+    eta->rowid_filter= erf;
+    //psergey-todo: also do setup for ANALYZE here.
   }
 
   if (tab_type == JT_NEXT)
@@ -25443,13 +25432,6 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
     set_if_smaller(f, 100.0);
     eta->filtered_set= true;
     eta->filtered= f;
-  }
-
-  if ((tab_select && tab_select->quick && tab_type != JT_CONST) ||
-      (key_info && ref.key_parts && tab_type != JT_FT))
-  {
-    if (save_filter_explain_data(eta))
-      return 1;
   }
 
   /* Build "Extra" field and save it */

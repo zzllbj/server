@@ -1115,12 +1115,14 @@ void Explain_table_access::fill_key_str(String *key_str, bool is_json) const
    - this is just used key length for ref/range 
    - for index_merge, it is a comma-separated list of lengths.
    - for hash join, it is key_len:pseudo_key_len
+   - [tabular form only] rowid filter length is added after "|".
 
-  The column looks identical in tabular and json forms. In JSON, we consider
-  the column legacy, it is superceded by used_key_parts.
+  In JSON, we consider this column to be legacy, it is superceded by 
+  used_key_parts.
 */
 
-void Explain_table_access::fill_key_len_str(String *key_len_str) const
+void Explain_table_access::fill_key_len_str(String *key_len_str,
+                                            bool is_json) const
 {
   bool is_hj= (type == JT_HASH || type == JT_HASH_NEXT || 
                type == JT_HASH_RANGE || type == JT_HASH_INDEX_MERGE);
@@ -1149,13 +1151,12 @@ void Explain_table_access::fill_key_len_str(String *key_len_str) const
     key_len_str->append(buf, length);
   }
 
-  if (key.get_filter_len() != (uint)-1)
+  if (!is_json && rowid_filter)
   {
-    char buf[64];
-    size_t length;
     key_len_str->append('|');
-    length= longlong10_to_str(key.get_filter_len(), buf, 10) - buf;
-    key_len_str->append(buf, length);
+    StringBuffer<64> filter_key_len;
+    rowid_filter->quick->print_key_len(&filter_key_len);
+    key_len_str->append(filter_key_len);
   }
 }
 
@@ -1179,20 +1180,6 @@ bool Explain_index_use::set(MEM_ROOT *mem_root, KEY *key, uint key_len_arg)
   return 0;
 }
 
-bool Explain_index_use::set_filter(MEM_ROOT *mem_root, KEY *key, uint key_len_arg)
-{
-  if (!(filter_name= strdup_root(mem_root, key->name.str)))
-    return 1;
-  filter_len= key_len_arg;
-  uint len= 0;
-  for (uint i= 0; i < key->usable_key_parts; i++)
-  {
-    len += key->key_part[i].store_length;
-    if (len >= key_len_arg)
-      break;
-  }
-  return 0;
-}
 
 bool Explain_index_use::set_pseudo_key(MEM_ROOT *root, const char* key_name_arg)
 {
@@ -1257,14 +1244,16 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
 
   /* `type` column */
    StringBuffer<64> join_type_buf;
-  if (!is_filter_set())
+  if (rowid_filter == NULL)
     push_str(thd, &item_list, join_type_str[type]);
   else
   {
     join_type_buf.append(join_type_str[type]);
     join_type_buf.append("|filter");
     item_list.push_back(new (mem_root)
-                        Item_string_sys(thd, join_type_buf.ptr(),                                                            join_type_buf.length()), mem_root);
+                        Item_string_sys(thd, join_type_buf.ptr(), 
+                                             join_type_buf.length()), 
+                        mem_root); 
   }
 
   /* `possible_keys` column */
@@ -1277,10 +1266,13 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
   /* `key` */
   StringBuffer<64> key_str;
   fill_key_str(&key_str, false);
-  if (key.get_filter_name())
+
+  if (rowid_filter)
   {
     key_str.append("|");
-    key_str.append(key.get_filter_name());
+    StringBuffer<64> rowid_key_str;
+    rowid_filter->quick->print_key(&rowid_key_str);
+    key_str.append(rowid_key_str);
   }
   
   if (key_str.length() > 0)
@@ -1290,7 +1282,7 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
 
   /* `key_len` */
   StringBuffer<64> key_len_str;
-  fill_key_len_str(&key_len_str);
+  fill_key_len_str(&key_len_str, false);
 
   if (key_len_str.length() > 0)
     push_string(thd, &item_list, &key_len_str);
@@ -1318,10 +1310,10 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
   {
     rows_str.append_ulonglong((ulonglong)rows);
 
-    if (is_filter_set())
+    if (rowid_filter)
     {
       rows_str.append(" (");
-      rows_str.append_ulonglong(filter_perc);
+      rows_str.append_ulonglong(round(rowid_filter->selectivity * 100.0));
       rows_str.append("%)");
     }
     item_list.push_back(new (mem_root)
@@ -1406,7 +1398,7 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
     extra_buf.append(STRING_WITH_LEN("Using filesort"));
   }
 
-  if (is_filter_set())
+  if (rowid_filter)
   {
     if (first)
       first= false;
@@ -1603,6 +1595,19 @@ void add_json_keyset(Json_writer *writer, const char *elem_name,
 }
 
 
+void Explain_rowid_filter::print_explain_json(Explain_query *query, 
+                                              Json_writer *writer,
+                                              bool is_analyze)
+{
+  Json_writer_nesting_guard guard(writer);
+  writer->add_member("rowid_filter").start_object();
+  quick->print_json(writer);
+  writer->add_member("rows").add_ll(rows);
+  writer->add_member("selectivity_pct").add_double(selectivity * 100.0);
+  writer->end_object(); // rowid_filter
+}
+
+
 void Explain_table_access::print_explain_json(Explain_query *query,
                                               Json_writer *writer,
                                               bool is_analyze)
@@ -1675,7 +1680,7 @@ void Explain_table_access::print_explain_json(Explain_query *query,
 
   /* `key_length` */
   StringBuffer<64> key_len_str;
-  fill_key_len_str(&key_len_str);
+  fill_key_len_str(&key_len_str, true);
   if (key_len_str.length())
     writer->add_member("key_length").add_str(key_len_str);
 
@@ -1699,6 +1704,11 @@ void Explain_table_access::print_explain_json(Explain_query *query,
   /* `ref` */
   if (!ref_list.is_empty())
     print_json_array(writer, "ref", ref_list);
+
+  if (rowid_filter)
+  {
+    rowid_filter->print_explain_json(query, writer, is_analyze);
+  }
 
   /* r_loops (not present in tabular output) */
   if (is_analyze)

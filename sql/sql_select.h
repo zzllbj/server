@@ -664,7 +664,6 @@ typedef struct st_join_table {
   SplM_plan_info *choose_best_splitting(double record_count,
                                         table_map remaining_tables);
   bool fix_splitting(SplM_plan_info *spl_plan, table_map remaining_tables);
-  bool save_filter_explain_data(Explain_table_access *eta);
 } JOIN_TAB;
 
 
