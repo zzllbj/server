@@ -213,7 +213,7 @@ Range_filter_cost_info
   for (uint i= best_filter_count; i < range_filter_cost_info_elements; i++)
   {
     Range_filter_cost_info *filter= &range_filter_cost_info[i];
-    if (intersected_with->is_set(filter->key_no))
+    if ((filter->key_no == ref_key_no) || intersected_with->is_set(filter->key_no))
       continue;
     if (card < filter->intersect_x_axis_abcissa)
       break;
@@ -233,10 +233,12 @@ bool Range_filter_ordered_array::fill()
   handler *file= table->file;
   THD *thd= table->in_use;
   QUICK_RANGE_SELECT* quick= (QUICK_RANGE_SELECT*) select->quick;
-  Item *pushed_idx_cond_save = file->pushed_idx_cond;
+  uint table_status_save= table->status;
+  Item *pushed_idx_cond_save= file->pushed_idx_cond;
   uint pushed_idx_cond_keyno_save= file->pushed_idx_cond_keyno;
   bool in_range_check_pushed_down_save= file->in_range_check_pushed_down;
 
+  table->status= 0;
   file->pushed_idx_cond= 0;
   file->pushed_idx_cond_keyno= MAX_KEY;
   file->in_range_check_pushed_down= false;
@@ -264,6 +266,7 @@ bool Range_filter_ordered_array::fill()
 
   quick->range_end();
   table->file->ha_end_keyread();
+  table->status= table_status_save;
   file->pushed_idx_cond= pushed_idx_cond_save;
   file->pushed_idx_cond_keyno= pushed_idx_cond_keyno_save;
   file->in_range_check_pushed_down= in_range_check_pushed_down_save;

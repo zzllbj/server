@@ -7557,8 +7557,8 @@ ha_innobase::build_template(
 	/* Below we check column by column if we need to access
 	the clustered index. */
 
-        if (pushed_rowid_filter) {
-                fetch_primary_key_cols = TRUE;
+        if (pushed_rowid_filter && rowid_filter_is_active) {
+	        fetch_primary_key_cols = TRUE;
                 m_prebuilt->pk_filter = this;
         } else {
 	        m_prebuilt->pk_filter = NULL;
@@ -7584,8 +7584,9 @@ ha_innobase::build_template(
 	/* Note that in InnoDB, i is the column number in the table.
 	MySQL calls columns 'fields'. */
 
-	if (active_index != MAX_KEY
-	    && active_index == pushed_idx_cond_keyno) {
+	if ((active_index != MAX_KEY
+             && active_index == pushed_idx_cond_keyno) ||
+            (pushed_rowid_filter && rowid_filter_is_active)) {
 		ulint	num_v = 0;
 
 		/* Push down an index condition or an end_range check. */
@@ -7779,8 +7780,9 @@ ha_innobase::build_template(
 				}
 			}
 		}
-
-		m_prebuilt->idx_cond = this;
+                if (active_index == pushed_idx_cond_keyno) {
+		        m_prebuilt->idx_cond = this;
+                }
 	} else {
 no_icp:
 		mysql_row_templ_t*	templ;

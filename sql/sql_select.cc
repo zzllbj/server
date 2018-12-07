@@ -10873,6 +10873,11 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
 	    sel->quick=tab->quick;		// Use value from get_quick_...
 	    sel->quick_keys.clear_all();
 	    sel->needed_reg.clear_all();
+            if (is_hj && tab->rowid_filter)
+	    {
+              delete tab->rowid_filter;
+              tab->rowid_filter= 0;
+	    }
 	  }
 	  else
 	  {
@@ -20421,6 +20426,8 @@ int join_init_read_record(JOIN_TAB *tab)
   if (tab->filesort && tab->sort_table())     // Sort table.
     return 1;
 
+  tab->fill_range_filter_if_needed();
+
   DBUG_EXECUTE_IF("kill_join_init_read_record",
                   tab->join->thd->set_killed(KILL_QUERY););
   if (tab->select && tab->select->quick && tab->select->quick->reset())
@@ -20436,8 +20443,7 @@ int join_init_read_record(JOIN_TAB *tab)
   if (!tab->preread_init_done  && tab->preread_init())
     return 1;
 
-  tab->fill_range_filter_if_needed();
-  
+
   if (init_read_record(&tab->read_record, tab->join->thd, tab->table,
                        tab->select, tab->filesort_result, 1,1, FALSE))
     return 1;
@@ -25303,7 +25309,8 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
   // psergey-todo: ^ check for error return code 
 
   /* Build "key", "key_len", and "ref" */
-  if (filter)
+
+  if (rowid_filter)
   {
     QUICK_SELECT_I *quick= rowid_filter->get_container()->get_select()->quick;
 

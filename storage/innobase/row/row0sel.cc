@@ -3816,7 +3816,7 @@ row_sel_enqueue_cache_row_for_mysql(
 	/* For non ICP code path the row should already exist in the
 	next fetch cache slot. */
 
-	if (prebuilt->idx_cond != NULL) {
+	if (prebuilt->idx_cond != NULL || prebuilt->pk_filter != NULL ) {
 		byte*	dest = row_sel_fetch_last_buf(prebuilt);
 
 		ut_memcpy(dest, mysql_rec, prebuilt->mysql_row_len);
@@ -4427,7 +4427,7 @@ row_search_mvcc(
 				mtr.commit(). */
 				ut_ad(!rec_get_deleted_flag(rec, comp));
 
-				if (prebuilt->idx_cond) {
+				if (prebuilt->idx_cond || prebuilt->pk_filter) {
 					switch (row_search_idx_cond_check(
 							buf, prebuilt,
 							rec, offsets)) {
@@ -5359,7 +5359,7 @@ requires_clust_rec:
 		result_rec = clust_rec;
 		ut_ad(rec_offs_validate(result_rec, clust_index, offsets));
 
-		if (prebuilt->idx_cond) {
+		if (prebuilt->idx_cond || prebuilt->pk_filter) {
 			/* Convert the record to MySQL format. We were
 			unable to do this in row_search_idx_cond_check(),
 			because the condition is on the secondary index
@@ -5420,7 +5420,7 @@ use_covering_index:
 		/* We only convert from InnoDB row format to MySQL row
 		format when ICP is disabled. */
 
-		if (!prebuilt->idx_cond) {
+		if (!(prebuilt->idx_cond || prebuilt->pk_filter)) {
 
 			/* We use next_buf to track the allocation of buffers
 			where we store and enqueue the buffers for our
@@ -5493,7 +5493,7 @@ use_covering_index:
 			       rec_offs_size(offsets));
 			mach_write_to_4(buf,
 					rec_offs_extra_size(offsets) + 4);
-		} else if (!prebuilt->idx_cond) {
+		} else if (!(prebuilt->idx_cond || prebuilt->pk_filter)) {
 			/* The record was not yet converted to MySQL format. */
 			if (!row_sel_store_mysql_rec(
 				    buf, prebuilt, result_rec, vrow,
@@ -5727,7 +5727,7 @@ normal_return:
 
 	DEBUG_SYNC_C("row_search_for_mysql_before_return");
 
-	if (prebuilt->idx_cond != 0) {
+	if (prebuilt->idx_cond != 0 || prebuilt->pk_filter != 0) {
 
 		/* When ICP is active we don't write to the MySQL buffer
 		directly, only to buffers that are enqueued in the pre-fetch

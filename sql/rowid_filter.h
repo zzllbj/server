@@ -190,7 +190,7 @@ class Refpos_container_ordered_array : public Sql_alloc
 public:
 
   Refpos_container_ordered_array(uint elem_sz, uint max_elems) 
-    : elem_size(elem_sz), max_elements(max_elems) {}
+    : elem_size(elem_sz), max_elements(max_elems), array(0) {}
 
   ~Refpos_container_ordered_array()
   {
@@ -204,7 +204,7 @@ public:
                                     elem_size * max_elements/8 + 1);
     return array == NULL;
   }
-  
+
   bool add(char *elem)
   {
     for (uint i= 0; i < elem_size; i++)
@@ -227,7 +227,7 @@ public:
   {
     my_qsort2(array->front(), array->elements()/elem_size,
               elem_size, (qsort2_cmp) cmp, cmp_arg);
-  }   
+  }
 };
 
 class Range_filter_ordered_array : public Sql_alloc
@@ -252,7 +252,7 @@ public:
   bool is_filled() { return container_is_filled; }
 
   bool fill();
-  
+
   bool sort();
 
   bool check(char *elem);
@@ -276,7 +276,7 @@ public:
   }
 
   bool is_active()
-  { 
+  {
     return get_container()->is_filled();
   }
 
