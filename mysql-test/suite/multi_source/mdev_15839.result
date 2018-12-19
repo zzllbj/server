@@ -1,0 +1,34 @@
+CHANGE MASTER 'master.one' TO master_port=MYPORT_1, master_host='127.0.0.1', master_user='root';
+CHANGE MASTER 'master.two.2' TO master_port=MYPORT_2, master_host='127.0.0.1', master_user='root';
+set default_master_connection = 'master.one';
+START SLAVE;
+include/wait_for_slave_to_start.inc
+set default_master_connection = 'master.two.2';
+START SLAVE;
+include/wait_for_slave_to_start.inc
+set default_master_connection = '';
+create database db1;
+create database not_replicated1;
+create database db2;
+create database not_replicated2;
+show databases;
+Database
+db1
+db2
+information_schema
+mtr
+mysql
+performance_schema
+test
+drop database db1;
+drop database not_replicated1;
+drop database db2;
+drop database not_replicated2;
+stop all slaves;
+Warnings:
+Note	1938	SLAVE 'master.one' stopped
+Note	1938	SLAVE 'master.two.2' stopped
+SET default_master_connection = "master.one";
+include/wait_for_slave_to_stop.inc
+SET default_master_connection = "master.two.2";
+include/wait_for_slave_to_stop.inc

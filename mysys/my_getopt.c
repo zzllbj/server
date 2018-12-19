@@ -661,8 +661,12 @@ static char *check_struct_option(char *cur_arg, char *key_name)
   char *ptr, *end;
   DBUG_ENTER("check_struct_option");
 
-  ptr= strcend(cur_arg + 1, '.'); /* Skip the first character */
   end= strcend(cur_arg, '=');
+
+  /* In replicate_do_db* we can have connection name with .*/
+  ptr= strcend(cur_arg + 1, '.'); /* Skip the first character */
+  while (strcend(ptr + 1, '.') < end)
+    ptr= strcend(ptr + 1, '.');
 
   /* 
      If the first dot is after an equal sign, then it is part

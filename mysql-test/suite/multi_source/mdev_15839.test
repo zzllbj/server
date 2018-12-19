@@ -1,0 +1,57 @@
+--source include/not_embedded.inc
+--source include/have_innodb.inc
+--source include/have_debug.inc
+
+--connect (master1,127.0.0.1,root,,,$SERVER_MYPORT_1)
+--connect (master2,127.0.0.1,root,,,$SERVER_MYPORT_2)
+--connect (slave,127.0.0.1,root,,,$SERVER_MYPORT_3)
+
+--connection slave
+--replace_result $SERVER_MYPORT_1 MYPORT_1
+eval CHANGE MASTER 'master.one' TO master_port=$SERVER_MYPORT_1, master_host='127.0.0.1', master_user='root';
+--replace_result $SERVER_MYPORT_2 MYPORT_2
+eval CHANGE MASTER 'master.two.2' TO master_port=$SERVER_MYPORT_2, master_host='127.0.0.1', master_user='root';
+
+set default_master_connection = 'master.one';
+START SLAVE;
+--source include/wait_for_slave_to_start.inc
+
+set default_master_connection = 'master.two.2';
+START SLAVE;
+--source include/wait_for_slave_to_start.inc
+set default_master_connection = '';
+
+--connection master1
+create database db1;
+create database not_replicated1;
+--save_master_pos
+
+--connection master2
+create database db2;
+create database not_replicated2;
+--save_master_pos
+
+--connection slave
+--sync_with_master 0,'master.one'
+--sync_with_master 0,'master.two.2'
+show databases;
+
+--connection master1
+drop database db1;
+drop database not_replicated1;
+--save_master_pos
+
+--connection master2
+drop database db2;
+drop database not_replicated2;
+--save_master_pos
+
+--connection slave
+--sync_with_master 0,'master.one'
+--sync_with_master 0,'master.two.2'
+
+stop all slaves;
+SET default_master_connection = "master.one";
+--source include/wait_for_slave_to_stop.inc
+SET default_master_connection = "master.two.2";
+--source include/wait_for_slave_to_stop.inc

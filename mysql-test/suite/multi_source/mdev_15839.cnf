@@ -1,0 +1,15 @@
+!include my.cnf
+
+[mysqld.1]
+log-bin
+log-slave-updates
+
+[mysqld.2]
+log-bin
+log-slave-updates
+
+[mysqld.3]
+log-bin
+log-slave-updates
+master.one.replicate_do_db="db1"
+master.two.2.replicate_do_db="db2"
