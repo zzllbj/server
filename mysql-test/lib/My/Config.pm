@@ -300,7 +300,7 @@ sub new {
     }
 
     # <option>
-    elsif ( $line =~ /^(#?[\w-]+)\s*$/ ) {
+    elsif ( $line =~ /^(#?[\.\w-]+)\s*$/ ) {
       my $option= $1;
 
       croak "Found option '$option' outside of group"
@@ -311,7 +311,7 @@ sub new {
     }
 
     # <option>=<value>
-    elsif ( $line =~ /^(#?[\w-]+)\s*=\s*(.*?)\s*$/ ) {
+    elsif ( $line =~ /^(#?[\.\w-]+)\s*=\s*(.*?)\s*$/ ) {
       my $option= $1;
       my $value= $2;
 
