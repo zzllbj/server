@@ -1103,7 +1103,7 @@ static bool find_db_tables_and_rm_known_files(THD *thd, MY_DIR *dirp,
     table_list->open_type= OT_BASE_ONLY;
 
     /* To be able to correctly look up the table in the table cache. */
-    if (lower_case_table_names)
+    if (lower_case_file_system)
       table_list->table_name_length= my_casedn_str(files_charset_info,
                                                    table_list->table_name);
 
