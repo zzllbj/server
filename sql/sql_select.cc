@@ -25730,16 +25730,22 @@ void JOIN::cache_const_exprs()
 
  
 /*
-  Get a cost of reading rows_limit rows through index keynr.
+  Get the cost of using index keynr to read #LIMIT matching rows
 
   @detail
    - If there is a quick select, we try to use it.
    - if there is a ref(const) access, we try to use it, too.
    - quick and ref(const) use different cost formulas, so if both are possible
       we should make a cost-based choice.
-  
+
+  rows_limit is the number of rows we would need to read when using a full
+  index scan. This is generally higher than the N from "LIMIT N" clause,
+  because there's a WHERE condition (a part of which is used to construct a
+  range access we are considering using here)
+
   @param  tab              JOIN_TAB with table access (is NULL for single-table
                            UPDATE/DELETE)
+  @param  rows_limit       See explanation above
   @param  read_time OUT    Cost of reading using quick or ref(const) access.
 
 
@@ -25752,6 +25758,7 @@ void JOIN::cache_const_exprs()
 
 static bool get_range_limit_read_cost(const JOIN_TAB *tab, 
                                       const TABLE *table, 
+                                      ha_rows table_records,
                                       uint keynr, 
                                       ha_rows rows_limit,
                                       double *read_time)
@@ -25818,8 +25825,32 @@ static bool get_range_limit_read_cost(const JOIN_TAB *tab,
         }
       }
     }
+
+    /*
+      Consider an example:
+
+        SELECT *
+        FROM t1
+        WHERE key1 BETWEEN 10 AND 20 AND col2='foo'
+        ORDER BY key1 LIMIT 10
+
+      If we were using a full index scan on key1, we would need to read this
+      many rows to get 10 matches:
+
+        10 / selectivity(key1 BETWEEN 10 AND 20 AND col2='foo')
+
+      This is the number we get in rows_limit.
+      But we intend to use range access on key1. The rows returned by quick
+      select will satisfy the range part of the condition,
+      "key1 BETWEEN 10 and 20". We will still need to filter them with
+      the remainder condition, (col2='foo').
+
+      The selectivity of the range access is (best_rows/table_records). We need
+      to discount it from the rows_limit:
+    */
+    double rows_limit_for_quick= rows_limit * (best_rows / table_records);
  
-    if (best_rows > rows_limit)
+    if (best_rows > rows_limit_for_quick)
     {
       /*
         LIMIT clause specifies that we will need to read fewer records than
@@ -25828,7 +25859,7 @@ static bool get_range_limit_read_cost(const JOIN_TAB *tab,
         only need 1/3rd of records, it will cost us 1/3rd of quick select's
         read time)
       */
-      best_cost *= rows_limit / best_rows;
+      best_cost *= rows_limit_for_quick / best_rows;
     }
     *read_time= best_cost;
     res= true;
@@ -26121,8 +26152,8 @@ test_if_cheaper_ordering(const JOIN_TAB *tab, ORDER *order, TABLE *table,
         index_scan_time= select_limit/rec_per_key *
                          MY_MIN(rec_per_key, table->file->scan_time());
         double range_scan_time;
-        if (get_range_limit_read_cost(tab, table, nr, select_limit, 
-                                       &range_scan_time))
+        if (get_range_limit_read_cost(tab, table, table_records, nr,
+                                      select_limit, &range_scan_time))
         {
           if (range_scan_time < index_scan_time)
             index_scan_time= range_scan_time;
