@@ -25962,7 +25962,7 @@ test_if_cheaper_ordering(const JOIN_TAB *tab, ORDER *order, TABLE *table,
     for (uint i= tablenr+1; i < join->table_count; i++)
     {
       fanout*= join->best_positions[i].records_read; // fanout is always >= 1
-      // But selectivity is =< 1 :
+      // But selectivity is 1 or less :
       fanout*= join->best_positions[i].cond_selectivity;
     }
   }
