@@ -291,11 +291,6 @@ enum ha_base_keytype {
 #define HA_KEY_HAS_PART_KEY_SEG 65536
 /* Internal Flag Can be calcaluted */
 #define HA_INVISIBLE_KEY 2<<18
-/*
-  Flag for long unique hash key
-  calculated in the init_from_binary_frm_image
-*/
-#define HA_LONG_UNIQUE_HASH   2<<19
 	/* Automatic bits in key-flag */
 
 #define HA_SPACE_PACK_USED	 4	/* Test for if SPACE_PACK used */

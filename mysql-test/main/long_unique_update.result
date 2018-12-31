@@ -254,10 +254,11 @@ ERROR 23000: Duplicate entry '2-2' for key 'b'
 update t1 set b=b+34, c=c+34 where e=1 and g=1 ;
 update t1 set b=35, c=35 where e=1 and g=1 ;
 update t1 set b=b+1, c=c+1 where a>0;
+ERROR 23000: Duplicate entry '3-3' for key 'b'
 update ignore t1 set b=b+1, c=c+1 where a>0;
 select * from t1 ;
 a	b	c	d	e	f	g
-1	35	35	1	1	1	1
+1	37	37	1	1	1	1
 2	2	2	2	2	2	2
 3	3	3	3	3	3	3
 4	4	4	4	4	4	4
@@ -265,7 +266,7 @@ a	b	c	d	e	f	g
 6	6	6	6	6	6	6
 7	7	7	7	7	7	7
 8	8	8	8	8	8	8
-9	9	9	9	9	9	9
+9	10	10	9	9	9	9
 truncate table t1;
 insert into t1 values(1,1,1,1,1,1,1),(2,2,2,2,2,2,2),(3,3,3,3,3,3,3),(4,4,4,4,4,4,4),
 (5,5,5,5,5,5,5),(6,6,6,6,6,6,6),(7,7,7,7,7,7,7),(8,8,8,8,8,8,8),(9,9,9,9,9,9,9);
@@ -304,7 +305,7 @@ ERROR 23000: Duplicate entry '3-3' for key 'e'
 update ignore t1 set e=e+1, g=g+1 where a>0;
 select * from t1 ;
 a	b	c	d	e	f	g
-1	1	1	1	36	1	36
+1	1	1	1	37	1	37
 2	2	2	2	2	2	2
 3	3	3	3	3	3	3
 4	4	4	4	4	4	4
@@ -312,5 +313,5 @@ a	b	c	d	e	f	g
 6	6	6	6	6	6	6
 7	7	7	7	7	7	7
 8	8	8	8	8	8	8
-9	9	9	9	9	9	9
+9	9	9	9	10	9	10
 drop table t1;

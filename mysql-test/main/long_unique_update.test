@@ -106,6 +106,7 @@ select * from t1 limit 3;
 update t1 set b=2 ,c=2 where a=1;
 update t1 set b=b+34, c=c+34 where e=1 and g=1 ;
 update t1 set b=35, c=35 where e=1 and g=1 ;
+--error ER_DUP_ENTRY
 update t1 set b=b+1, c=c+1 where a>0;
 update ignore t1 set b=b+1, c=c+1 where a>0;
 select * from t1 ;

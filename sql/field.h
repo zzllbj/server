@@ -4311,7 +4311,7 @@ public:
   int key_cmp(const uchar *a, const uchar *b)
   { return cmp_binary((uchar *) a, (uchar *) b); }
   int key_cmp(const uchar *str, uint length);
-  int cmp_offset(long row_offset);
+  int cmp_offset(my_ptrdiff_t row_offset);
   bool update_min(Field *min_val, bool force_update)
   { 
     longlong val= val_int();

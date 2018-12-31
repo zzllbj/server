@@ -8331,11 +8331,12 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     Collect all keys which isn't in drop list. Add only those
     for which some fields exists.
   */
-
   for (uint i=0 ; i < table->s->keys ; i++,key_info++)
   {
     if (key_info->flags & HA_INVISIBLE_KEY)
       continue;
+    if (key_info->algorithm == HA_KEY_ALG_LONG_HASH)
+      re_setup_keyinfo_hash(key_info);
     const char *key_name= key_info->name.str;
     Alter_drop *drop;
     drop_it.rewind();
@@ -8459,11 +8460,8 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       enum Key::Keytype key_type;
       LEX_CSTRING tmp_name;
       bzero((char*) &key_create_info, sizeof(key_create_info));
-      if (key_info->flags & HA_LONG_UNIQUE_HASH)
-      {
-        key_info->flags&= ~(HA_LONG_UNIQUE_HASH);
+      if (key_info->algorithm & HA_KEY_ALG_LONG_HASH)
         key_info->algorithm= HA_KEY_ALG_UNDEF;
-      }
       key_create_info.algorithm= key_info->algorithm;
       /*
         We copy block size directly as some engines, like Area, sets this
@@ -10631,14 +10629,23 @@ copy_data_between_tables(THD *thd, TABLE *from, TABLE *to,
           if ((int) key_nr >= 0)
           {
             const char *err_msg= ER_THD(thd, ER_DUP_ENTRY_WITH_KEY_NAME);
+            KEY *long_key= NULL;
             if (key_nr == 0 && to->s->keys > 0 &&
                 (to->key_info[0].key_part[0].field->flags &
                  AUTO_INCREMENT_FLAG))
               err_msg= ER_THD(thd, ER_DUP_ENTRY_AUTOINCREMENT_CASE);
+            if (key_nr <= to->s->keys && to->key_info[key_nr].algorithm
+                    == HA_KEY_ALG_LONG_HASH)
+            {
+              long_key= to->key_info + key_nr;
+              re_setup_keyinfo_hash(long_key);
+            }
             print_keydup_error(to,
                                key_nr >= to->s->keys ? NULL :
                                    &to->key_info[key_nr],
                                err_msg, MYF(0));
+            if (long_key)
+              setup_keyinfo_hash(long_key);
           }
           else
             to->file->print_error(error, MYF(0));

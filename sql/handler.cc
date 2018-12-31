@@ -3688,9 +3688,19 @@ void handler::print_error(int error, myf errflag)
       uint key_nr=get_dup_key(error);
       if ((int) key_nr >= 0 && key_nr < table->s->keys)
       {
+        KEY *long_key= NULL;
+        if (table->key_info[key_nr].algorithm
+                == HA_KEY_ALG_LONG_HASH)
+        {
+          long_key= table->key_info + key_nr;
+          re_setup_keyinfo_hash(long_key);
+        }
         print_keydup_error(table, &table->key_info[key_nr], errflag);
+        if (long_key)
+          setup_keyinfo_hash(long_key);
         DBUG_VOID_RETURN;
       }
+      setup_table_hash(table);
     }
     textno=ER_DUP_KEY;
     break;

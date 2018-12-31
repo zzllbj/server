@@ -296,7 +296,7 @@ LEX_CUSTRING build_frm_image(THD *thd, const LEX_CSTRING *table,
   uint e_unique_hash_extra_parts= 0;
   for (i= 0; i < keys; i++)
     if (key_info[i].algorithm == HA_KEY_ALG_LONG_HASH)
-      e_unique_hash_extra_parts+= key_info[i].user_defined_key_parts - 1;
+      e_unique_hash_extra_parts++;
   key_buff_length= uint4korr(fileinfo+47);
 
   frm.length= FRM_HEADER_SIZE;                  // fileinfo;
@@ -592,7 +592,7 @@ static uint pack_keys(uchar *keybuff, uint key_count, KEY *keyinfo,
     }
   }
 
-  key_parts-= e_unique_hash_extra_parts;
+  key_parts+= e_unique_hash_extra_parts;
   if (key_count > 127 || key_parts > 127)
   {
     keybuff[0]= (key_count & 0x7f) | 0x80;

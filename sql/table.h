@@ -359,7 +359,11 @@ const LEX_CSTRING ha_hash_str           {STRING_WITH_LEN("HASH")};
 
 int find_field_pos_in_hash(Item *hash_item, const char * field_name);
 
-int fields_in_hash_str(Item *hash_item);
+int fields_in_hash_expr(Item *hash_item);
+
+inline void setup_keyinfo_hash(KEY *key_info);
+
+inline void re_setup_keyinfo_hash(KEY *key_info);
 
 Field * field_ptr_in_hash_str(Item *hash_item, int index);
 
@@ -766,6 +770,7 @@ struct TABLE_SHARE
   bool vcols_need_refixing;
   bool has_update_default_function;
   bool can_do_row_logging;              /* 1 if table supports RBR */
+  bool long_unique_table;
 
   ulong table_map_id;                   /* for row-based replication */
 

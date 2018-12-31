@@ -2,11 +2,13 @@
 #First we will check all option for
 #table containing single unique column
 #table containing keys like unique(a,b,c,d) etc
-#then table containing 2 blob unique etc 
+#then table containing 2 blob unique etc
 set @allowed_packet= @@max_allowed_packet;
-#table with single long blob column; 
-create table t1(a blob unique);
+#table with single long blob column;
+create table t1(a blob  unique );
 insert into t1 values(1),(2),(3),(56),('sachin'),('maria'),(123456789034567891),(null),(null),(123456789034567890);
+insert into t1 values(2);
+ERROR 23000: Duplicate entry '2' for key 'a'
 #table structure;
 desc t1;
 Field	Type	Null	Key	Default	Extra
@@ -40,7 +42,7 @@ Recordlength:                   20
 
 table description:
 Key Start Len Index   Type
-1   12    8   multip. ulonglong NULL       
+1   12    8   unique  ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	UNI		select,insert,update,references		NEVER	NULL
@@ -128,7 +130,7 @@ Recordlength:                   20
 
 table description:
 Key Start Len Index   Type
-1   12    8   multip. ulonglong NULL       
+1   12    8   unique  ulonglong NULL       
 #now some alter commands;
 alter table t1 add column b int;
 desc t1;
@@ -322,7 +324,7 @@ ERROR 23000: Duplicate entry '1' for key 'b'
 insert into t1 values(7,1);
 ERROR 23000: Duplicate entry '1' for key 'b'
 drop table t1;
-#table with multiple  long blob column and varchar text column ; 
+#table with multiple  long blob column and varchar text column ;
 create table t1(a blob unique, b int , c blob unique , d text unique , e varchar(3000) unique);
 insert into t1 values(1,2,3,4,5),(2,11,22,33,44),(3111,222,333,444,555),(5611,2222,3333,4444,5555),
 ('sachin',341,'fdf','gfgfgfg','hghgr'),('maria',345,'frter','dasd','utyuty'),
@@ -364,10 +366,10 @@ Recordlength:                 3072
 
 table description:
 Key Start Len Index   Type
-1   3063  8   multip. ulonglong NULL       
-2   3055  8   multip. ulonglong NULL       
-3   3047  8   multip. ulonglong NULL       
-4   3039  8   multip. ulonglong NULL       
+1   3063  8   unique  ulonglong NULL       
+2   3055  8   unique  ulonglong NULL       
+3   3047  8   unique  ulonglong NULL       
+4   3039  8   unique  ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	UNI		select,insert,update,references		NEVER	NULL
@@ -522,7 +524,7 @@ g	int(11)	YES		NULL
 db_row_hash_1	int(11)	YES	UNI	NULL	
 db_row_hash_2	int(11)	YES	UNI	NULL	
 db_row_hash_5	int(11)	YES		NULL	
-#this show now break anything;
+#this should not break anything;
 insert into t1 values(1,2,3,4,5,6,23,5,6);
 ERROR 23000: Duplicate entry '1' for key 'a'
 #this should also drop the unique index;
@@ -721,10 +723,10 @@ Recordlength:                 5092
 
 table description:
 Key Start Len Index   Type
-1   5081  8   multip. ulonglong NULL       
-2   5073  8   multip. ulonglong NULL       
-3   5065  8   multip. ulonglong NULL       
-4   5057  8   multip. ulonglong NULL       
+1   5081  8   unique  ulonglong NULL       
+2   5073  8   unique  ulonglong NULL       
+3   5065  8   unique  ulonglong NULL       
+4   5057  8   unique  ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	MUL		select,insert,update,references		NEVER	NULL
