@@ -359,7 +359,7 @@ const LEX_CSTRING ha_hash_str           {STRING_WITH_LEN("HASH")};
 
 int find_field_pos_in_hash(Item *hash_item, const char * field_name);
 
-int fields_in_hash_expr(Item *hash_item);
+int fields_in_hash_keyinfo(KEY *keyinfo);
 
 inline void setup_keyinfo_hash(KEY *key_info);
 

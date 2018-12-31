@@ -8770,9 +8770,10 @@ int find_field_pos_in_hash(Item *hash_item, const  char * field_name)
 /*
    find total number of field in hash expr
 */
-int fields_in_hash_expr(Item * hash_item)
+int fields_in_hash_keyinfo(KEY *keyinfo)
 {
-  Item_func_or_sum * temp= static_cast<Item_func_or_sum *>(hash_item);
+  Item_func_or_sum * temp= static_cast<Item_func_or_sum *>(
+                     keyinfo->key_part->field->vcol_info->expr);
   Item_args * t_item= static_cast<Item_args *>(temp);
   return t_item->argument_count();
 }
@@ -8788,8 +8789,7 @@ inline void setup_keyinfo_hash(KEY *key_info)
 inline void re_setup_keyinfo_hash(KEY *key_info)
 {
 
-  uint no_of_keyparts= fields_in_hash_expr(
-                          key_info->key_part->field->vcol_info->expr);
+  uint no_of_keyparts= fields_in_hash_keyinfo(key_info);
   key_info->key_part-= no_of_keyparts;
   key_info->user_defined_key_parts= key_info->usable_key_parts=
                key_info->ext_key_parts= no_of_keyparts;
