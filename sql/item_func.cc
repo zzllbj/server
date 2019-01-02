@@ -1718,6 +1718,17 @@ bool Item_func_mod::fix_length_and_dec()
   DBUG_RETURN(FALSE);
 }
 
+inline void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str)
+{
+  CHARSET_INFO *cs;
+  uchar l[4];
+  int4store(l, str->length());
+  cs= str->charset();
+  cs->coll->hash_sort(cs, l, sizeof(l), &nr1, &nr2);
+  cs= str->charset();
+  cs->coll->hash_sort(cs, (uchar *)str->ptr(), str->length(), &nr1, &nr2);
+  sql_print_information("setiya %lu, %s", nr1, str->ptr());
+}
 
 longlong  Item_func_hash::val_int()
 {
@@ -1740,11 +1751,12 @@ longlong  Item_func_hash::val_int()
 }
 
 
-void  Item_func_hash::fix_length_and_dec()
+bool Item_func_hash::fix_length_and_dec()
 {
   maybe_null= 1;
   decimals= 0;
   max_length= 8;
+  return false;
 }
 
 

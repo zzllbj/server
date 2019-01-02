@@ -6277,10 +6277,8 @@ static int check_duplicate_long_entry_key(TABLE *table, handler *h, uchar *new_r
 {
   Field *hash_field;
   int result, error= 0;
-  if (!(table->key_info[key_no].user_defined_key_parts == 1
-        && table->key_info[key_no].key_part->field->flags & LONG_UNIQUE_HASH_FIELD ))
-    return 0;
-  hash_field= table->key_info[key_no].key_part->field;
+  KEY *key_info= table->key_info + key_no;
+  hash_field= key_info->key_part->field;
   DBUG_ASSERT((table->key_info[key_no].flags & HA_NULL_PART_KEY &&
       table->key_info[key_no].key_length == HA_HASH_KEY_LENGTH_WITH_NULL)
     || table->key_info[key_no].key_length == HA_HASH_KEY_LENGTH_WITHOUT_NULL);
@@ -6304,13 +6302,11 @@ static int check_duplicate_long_entry_key(TABLE *table, handler *h, uchar *new_r
   if (!result)
   {
     bool is_same;
+    uint arg_count= fields_in_hash_keyinfo(key_info);
+    Item_func_hash * temp= (Item_func_hash *)hash_field->vcol_info->expr;
+    Item ** arguments= temp->arguments();
     do
     {
-      Item_func_or_sum * temp= static_cast<Item_func_or_sum *>(hash_field->
-                                                               vcol_info->expr);
-      Item_args * t_item= static_cast<Item_args *>(temp);
-      uint arg_count= t_item->argument_count();
-      Item ** arguments= t_item->arguments();
       long diff= table->check_unique_buf - new_rec;
       Field * t_field;
       is_same= true;
@@ -6366,7 +6362,25 @@ static int check_duplicate_long_entry_key(TABLE *table, handler *h, uchar *new_r
   return error;
 }
 /** @brief
-    check whether inserted/updated records breaks the
+    check whether inserted records breaks the
+    unique constraint on long columns.
+    @returns 0 if no duplicate else returns error
+  */
+static int check_duplicate_long_entries(TABLE *table, handler *h, uchar *new_rec)
+{
+  table->dupp_hash_key= -1;
+  int result;
+  for (uint i= 0; i < table->s->keys; i++)
+  {
+    if (table->key_info[i].algorithm == HA_KEY_ALG_LONG_HASH &&
+            (result= check_duplicate_long_entry_key(table, h, new_rec, i)))
+      return result;
+  }
+  return 0;
+}
+
+/** @brief
+    check whether updated records breaks the
     unique constraint on long columns.
     In the case of update we just need to check the specic key
     reason for that is consider case
@@ -6377,24 +6391,7 @@ static int check_duplicate_long_entry_key(TABLE *table, handler *h, uchar *new_r
     whole keys in table then index scan on x_y will return 0
     because data is same so in the case of update we take
     key as a parameter in normal insert key should be -1
-   @returns 0 if no duplicate else returns error
-  */
-static int check_duplicate_long_entries(TABLE *table, handler *h, uchar *new_rec)
-{
-  table->dupp_hash_key= -1;
-  int result;
-  for (uint i= 0; i < table->s->keys; i++)
-  {
-    if ((result= check_duplicate_long_entry_key(table, h, new_rec, i)))
-      return result;
-  }
-  return 0;
-}
-
-/** @brief
-    check whether updated records breaks the
-    unique constraint on long columns.
-   @returns 0 if no duplicate else returns error
+    @returns 0 if no duplicate else returns error
   */
 static int check_duplicate_long_entries_update(TABLE *table, handler *h, uchar *new_rec)
 {
@@ -6461,16 +6458,13 @@ int handler::ha_write_row(uchar *buf)
   DBUG_ENTER("handler::ha_write_row");
   DEBUG_SYNC_C("ha_write_row_start");
 
- // setup_table_hash(table);
   MYSQL_INSERT_ROW_START(table_share->db.str, table_share->table_name.str);
   mark_trx_read_write();
   increment_statistics(&SSV::ha_write_count);
 
-  if ((error= check_duplicate_long_entries(table, table->file, buf)))
-  {
-    //re_setup_table(table);
+  if (table->s->long_unique_table &&
+          (error= check_duplicate_long_entries(table, table->file, buf)))
     DBUG_RETURN(error);
-  }
   TABLE_IO_WAIT(tracker, m_psi, PSI_TABLE_WRITE_ROW, MAX_KEY, 0,
                       { error= write_row(buf); })
 

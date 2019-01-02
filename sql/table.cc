@@ -1056,7 +1056,6 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
   Query_arena backup_arena;
   Virtual_column_info *vcol= 0;
   StringBuffer<MAX_FIELD_WIDTH> expr_str;
-  uint length= 0;
   bool res= 1;
   DBUG_ENTER("parse_vcol_defs");
 
@@ -1332,7 +1331,6 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   const uchar *frm_image_end = frm_image + frm_length;
   uchar *record, *null_flags, *null_pos, *UNINIT_VAR(mysql57_vcol_null_pos);
   const uchar *disk_buff, *strpos;
-  const uchar * field_properties=NULL;
   ulong pos, record_offset;
   ulong rec_buff_length;
   handler *handler_file= 0;
@@ -2562,10 +2560,10 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
 
         field= key_part->field= share->field[key_part->fieldnr-1];
         key_part->type= field->key_type();
-        /* Invisible Full is currently used by long uniques */
-        if ((field->invisible ==  INVISIBLE_USER ||
-                field->invisible == INVISIBLE_SYSTEM )&& !field->vers_sys_field())
-          keyinfo->flags |= HA_INVISIBLE_KEY;
+
+        if (field->invisible > INVISIBLE_USER && !field->vers_sys_field())
+          if (keyinfo->algorithm != HA_KEY_ALG_LONG_HASH)
+            keyinfo->flags |= HA_INVISIBLE_KEY;
         if (field->null_ptr)
         {
           key_part->null_offset=(uint) ((uchar*) field->null_ptr -
@@ -8770,12 +8768,11 @@ int find_field_pos_in_hash(Item *hash_item, const  char * field_name)
 /*
    find total number of field in hash expr
 */
-int fields_in_hash_keyinfo(KEY *keyinfo)
+inline int fields_in_hash_keyinfo(KEY *keyinfo)
 {
-  Item_func_or_sum * temp= static_cast<Item_func_or_sum *>(
-                     keyinfo->key_part->field->vcol_info->expr);
-  Item_args * t_item= static_cast<Item_args *>(temp);
-  return t_item->argument_count();
+  Item_func_hash * temp= (Item_func_hash *)
+                     keyinfo->key_part->field->vcol_info->expr;
+  return temp->argument_count();
 }
 
 inline void setup_keyinfo_hash(KEY *key_info)
@@ -8805,18 +8802,18 @@ inline void re_setup_keyinfo_hash(KEY *key_info)
 void create_update_handler(THD *thd, TABLE *table)
 {
   handler *update_handler= NULL;
-    for (uint i= 0; i < table->s->keys; i++)
+  for (uint i= 0; i < table->s->keys; i++)
+  {
+    if (table->key_info[i].algorithm == HA_KEY_ALG_LONG_HASH)
     {
-      if (table->key_info[i].algorithm == HA_KEY_ALG_LONG_HASH)
-      {
-        update_handler= table->file->clone(table->s->normalized_path.str,
-                                           thd->mem_root);
-        update_handler->ha_external_lock(thd, F_RDLCK);
-        table->update_handler= update_handler;
-        return;
-      }
+      update_handler= table->file->clone(table->s->normalized_path.str,
+                                         thd->mem_root);
+      update_handler->ha_external_lock(thd, F_RDLCK);
+      table->update_handler= update_handler;
+      return;
     }
-    return;
+  }
+  return;
 }
 
 /**
@@ -9336,14 +9333,3 @@ bool TABLE::export_structure(THD *thd, Row_definition_list *defs)
   return false;
 }
 
-void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str)
-{
-  CHARSET_INFO *cs;
-  uchar l[4];
-  int4store(l, str->length());
-  cs= &my_charset_bin;
-  cs->coll->hash_sort(cs, l, sizeof(l), &nr1, &nr2);
-  cs= str->charset();
-  cs->coll->hash_sort(cs, (uchar *)str->ptr(), str->length(), &nr1, &nr2);
-  sql_print_information("setiya %lu, %s", nr1, str->ptr());
-}

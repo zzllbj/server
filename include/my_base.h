@@ -100,7 +100,7 @@ enum ha_key_alg {
   HA_KEY_ALG_RTREE=	2,		/* R-tree, for spatial searches */
   HA_KEY_ALG_HASH=	3,		/* HASH keys (HEAP tables) */
   HA_KEY_ALG_FULLTEXT=	4,		/* FULLTEXT (MyISAM tables) */
-  HA_KEY_ALG_LONG_HASH= 5   /* long BLOB keys */
+  HA_KEY_ALG_LONG_HASH= 5		/* long BLOB keys */
 };
 
         /* Storage media types */ 
