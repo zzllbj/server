@@ -7722,6 +7722,7 @@ fulltext_key_opt:
 btree_or_rtree:
           BTREE_SYM { $$= HA_KEY_ALG_BTREE; }
         | RTREE_SYM { $$= HA_KEY_ALG_RTREE; }
+        | HASH_SYM  { $$= HA_KEY_ALG_HASH; }
         ;
 
 key_list:

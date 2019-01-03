@@ -131,8 +131,10 @@ select c,count(*) from t1 group by c;
 select d,count(*) from t1 group by d;
 drop table t1;
 
--- error 1071
+#-- error 1071
+#After index on long unique this will work
 create table t1 (a text, unique (a(2100))); # should give an error
+drop table t1;
 create table t1 (a text, key (a(2100)));    # key is auto-truncated
 show create table t1;
 drop table t1;

@@ -1224,6 +1224,7 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
     }
     if (field->has_default_now_unireg_check())
     {
+      expr_str.length(parse_vcol_keyword.length);
       expr_str.append(STRING_WITH_LEN("current_timestamp("));
       expr_str.append_ulonglong(field->decimals());
       expr_str.append(')');
@@ -8799,20 +8800,15 @@ inline void re_setup_keyinfo_hash(KEY *key_info)
   @param table          Table Object
   @return    handler object
 */
-void create_update_handler(THD *thd, TABLE *table)
+void clone_handler_for_update(THD *thd, TABLE *table)
 {
   handler *update_handler= NULL;
-  for (uint i= 0; i < table->s->keys; i++)
-  {
-    if (table->key_info[i].algorithm == HA_KEY_ALG_LONG_HASH)
-    {
-      update_handler= table->file->clone(table->s->normalized_path.str,
-                                         thd->mem_root);
-      update_handler->ha_external_lock(thd, F_RDLCK);
-      table->update_handler= update_handler;
-      return;
-    }
-  }
+  if (!table->s->long_unique_table)
+    return;
+  update_handler= table->file->clone(table->s->normalized_path.str,
+                                     thd->mem_root);
+  update_handler->ha_external_lock(thd, F_RDLCK);
+  table->update_handler= update_handler;
   return;
 }
 

@@ -9,6 +9,11 @@ set @allowed_packet= @@max_allowed_packet;
 --echo #table with single long blob column;
 create table t1(a blob  unique );
 insert into t1 values(1),(2),(3),(56),('sachin'),('maria'),(123456789034567891),(null),(null),(123456789034567890);
+--echo #blob with primary key not allowed
+--error ER_TOO_LONG_KEY
+create table t2(a blob,primary key(a(10000)));
+--error ER_TOO_LONG_KEY
+create table t3(a varchar(10000) primary key);
 
 --error ER_DUP_ENTRY
 insert into t1 values(2);

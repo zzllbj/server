@@ -7,6 +7,11 @@ set @allowed_packet= @@max_allowed_packet;
 #table with single long blob column;
 create table t1(a blob  unique );
 insert into t1 values(1),(2),(3),(56),('sachin'),('maria'),(123456789034567891),(null),(null),(123456789034567890);
+#blob with primary key not allowed
+create table t2(a blob,primary key(a(10000)));
+ERROR 42000: Specified key was too long; max key length is 1000 bytes
+create table t3(a varchar(10000) primary key);
+ERROR 42000: Specified key was too long; max key length is 1000 bytes
 insert into t1 values(2);
 ERROR 23000: Duplicate entry '2' for key 'a'
 #table structure;

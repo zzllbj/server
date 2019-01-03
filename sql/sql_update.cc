@@ -861,7 +861,6 @@ update_begin:
   */
   can_compare_record= records_are_comparable(table);
   explain->tracker.on_scan_init();
-  create_update_handler(thd, table);
 
   THD_STAGE_INFO(thd, stage_updating);
   while (!(error=info.read_record()) && !thd->killed)
@@ -2094,7 +2093,6 @@ multi_update::initialize_tables(JOIN *join)
 
     if (ignore)
       table->file->extra(HA_EXTRA_IGNORE_DUP_KEY);
-    create_update_handler(join->thd, table);
     if (table == main_table)			// First table in join
     {
       if (safe_update_on_fly(thd, join->join_tab, table_ref, all_tables))

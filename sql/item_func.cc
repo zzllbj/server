@@ -1727,7 +1727,6 @@ inline void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str)
   cs->coll->hash_sort(cs, l, sizeof(l), &nr1, &nr2);
   cs= str->charset();
   cs->coll->hash_sort(cs, (uchar *)str->ptr(), str->length(), &nr1, &nr2);
-  sql_print_information("setiya %lu, %s", nr1, str->ptr());
 }
 
 longlong  Item_func_hash::val_int()

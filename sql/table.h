@@ -362,9 +362,7 @@ inline void re_setup_keyinfo_hash(KEY *key_info);
 
 Field * field_ptr_in_hash_str(Item *hash_item, int index);
 
-inline void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str);
-
-void create_update_handler(THD *thd, TABLE *table);
+void clone_handler_for_update(THD *thd, TABLE *table);
 
 void delete_update_handler(THD *thd, TABLE *table);
 
