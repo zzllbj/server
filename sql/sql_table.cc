@@ -3045,7 +3045,6 @@ void promote_first_timestamp_column(List<Create_field> *column_definitions)
   }
 }
 
-
 /**
   Check if there is a duplicate key. Report a warning for every duplicate key.
 
@@ -3323,6 +3322,13 @@ mysql_add_invisible_index(THD *thd, List<Key> *key_list,
   key_list->push_back(key, thd->mem_root);
   return key;
 }
+
+#define LONG_HASH_FIELD_NAME_LENGTH 30
+static inline void make_long_hash_field_name(LEX_CSTRING *buf, uint num)
+{
+  buf->length= my_snprintf((char *)buf->str,
+          LONG_HASH_FIELD_NAME_LENGTH, "DB_ROW_HASH_%u", num);
+}
 /**
   Add fully invisible hash field to table in case of long
   unique column
@@ -3332,7 +3338,7 @@ mysql_add_invisible_index(THD *thd, List<Key> *key_list,
   @param  key_info      current long unique key info
 */
 
-static void add_hash_field(THD * thd, List<Create_field> *create_list,
+static Create_field * add_hash_field(THD * thd, List<Create_field> *create_list,
                            CHARSET_INFO *cs, KEY *key_info)
 {
   List_iterator<Create_field> it(*create_list);
@@ -3344,36 +3350,28 @@ static void add_hash_field(THD * thd, List<Create_field> *create_list,
   cf->invisible= INVISIBLE_FULL;
   cf->pack_flag|= FIELDFLAG_MAYBE_NULL;
   uint num= 1;
-  char *temp_name= (char *)thd->alloc(30);
-  my_snprintf(temp_name, 30, "DB_ROW_HASH_%u", num);
+  LEX_CSTRING field_name;
+  field_name.str= (char *)thd->alloc(LONG_HASH_FIELD_NAME_LENGTH);
+  make_long_hash_field_name(&field_name, num);
   /*
-    Check for collusions
+    Check for collisions
    */
   while ((dup_field= it++))
   {
-    if (!my_strcasecmp(system_charset_info, temp_name, dup_field->field_name.str))
+    if (!my_strcasecmp(system_charset_info, field_name.str, dup_field->field_name.str))
     {
       num++;
-      my_snprintf(temp_name, 30, "DB_ROW_HASH_%u", num);
+      make_long_hash_field_name(&field_name, num);
       it.rewind();
     }
   }
   it.rewind();
-  cf->field_name.str= temp_name;
-  cf->field_name.length= strlen(temp_name);
+  cf->field_name= field_name;
   cf->set_handler(&type_handler_longlong);
   key_info->flags|= HA_NOSAME;
   key_info->algorithm= HA_KEY_ALG_LONG_HASH;
-  it.rewind();
-  uint record_offset= 0;
-  while ((dup_field= it++))
-  {
-    dup_field->offset= record_offset;
-    if (dup_field->stored_in_db())
-      record_offset+= dup_field->pack_length;
-  }
-  cf->offset= record_offset;
   create_list->push_back(cf,thd->mem_root);
+  return cf;
 }
 
 
@@ -4189,29 +4187,17 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 
     if (is_hash_field_needed)
     {
-      add_hash_field(thd, &alter_info->create_list,
+      Create_field *hash_fld= add_hash_field(thd, &alter_info->create_list,
                        create_info->default_table_charset,
                        key_info);
+      hash_fld->offset= record_offset;
+      record_offset+= hash_fld->pack_length;
       if (key_info->flags & HA_NULL_PART_KEY)
          null_fields++;
       else
       {
-        uint elements= alter_info->create_list.elements;
-        Create_field *hash_fld= static_cast<Create_field *>(alter_info->
-                                                     create_list.elem(elements -1 ));
         hash_fld->flags|= NOT_NULL_FLAG;
         hash_fld->pack_flag&= ~FIELDFLAG_MAYBE_NULL;
-       /*
-          Althought we do not need default value anywhere in code , but if we create
-          table with non null long columns , then at the time of insert we get warning.
-          So default value is used so solve this warning.
-        Virtual_column_info *default_value= new (thd->mem_root) Virtual_column_info();
-        char * def_str= (char *)alloc_root(thd->mem_root, 2);
-        strncpy(def_str, "0", 1);
-        default_value->expr_str.str= def_str;
-        default_value->expr_str.length= 1;
-        default_value->expr_item= new (thd->mem_root) Item_int(thd,0);
-        hash_fld->default_value= default_value; */
       }
     }
     if (validate_comment_length(thd, &key->key_create_info.comment,
