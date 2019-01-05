@@ -16,13 +16,32 @@ void Range_filter_cost_info::init(TABLE *tab, uint key_numb)
 {
   table= tab;
   key_no= key_numb;
-  cardinality= table->quick_rows[key_no];
-  b= filter_io_cost() + filter_write_cost() + filter_sort_cost();
-  selectivity= cardinality/((double) table->stat_records());
+  est_elements= table->quick_rows[key_no];
+  b= build_cost(ORDERED_ARRAY_CONTAINER);
+  selectivity= est_elements/((double) table->stat_records());
   a= (1 + COST_COND_EVAL)*(1 - selectivity) - lookup_cost();
   intersect_x_axis_abcissa= b/a;
 }
 
+double
+Range_filter_cost_info::build_cost(Rowid_filter_container_type container_type)
+{
+  double cost= 0;
+
+  cost+= table->quick_index_only_costs[key_no];
+
+  switch (container_type) {
+
+  case ORDERED_ARRAY_CONTAINER:
+    cost+= ARRAY_WRITE_COST * est_elements; /* cost filling the container */
+    cost+= ARRAY_SORT_C * est_elements * log(est_elements); /* sorting cost */
+    break;
+  default:
+    DBUG_ASSERT(0);
+  }
+
+  return cost;
+}
 
 /**
   @brief

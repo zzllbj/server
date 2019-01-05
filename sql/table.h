@@ -1195,7 +1195,14 @@ public:
     and max #key parts that range access would use.
   */
   ha_rows	quick_rows[MAX_KEY];
+  uint          quick_key_parts[MAX_KEY];
+
   double 	quick_costs[MAX_KEY];
+  /*
+    If there is a range access by i-th index then the cost of
+    index only access for it is stored in quick_index_only_costs[i]
+  */
+  double 	quick_index_only_costs[MAX_KEY];
 
   /* 
     Bitmaps of key parts that =const for the duration of join execution. If
@@ -1204,10 +1211,7 @@ public:
   */
   key_part_map  const_key_parts[MAX_KEY];
 
-  uint    quick_key_parts[MAX_KEY];
   uint    quick_n_ranges[MAX_KEY];
-  /* For each key I/O access cost is stored */
-  double  quick_key_io[MAX_KEY];
 
   /* 
     Estimate of number of records that satisfy SARGable part of the table

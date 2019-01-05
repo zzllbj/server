@@ -7,6 +7,13 @@ call mtr.add_suppression("Deadlock found when trying to get lock; try restarting
 set global default_storage_engine='innodb';
 set session default_storage_engine='innodb';
 
+set @innodb_stats_persistent_save= @@innodb_stats_persistent;
+set @innodb_stats_persistent_sample_pages_save=
+      @@innodb_stats_persistent_sample_pages;
+
+set global innodb_stats_persistent= 1;
+set global innodb_stats_persistent_sample_pages=100;
+
 --disable_warnings
 drop table if exists t1, t2;
 --enable_warnings
@@ -38,6 +45,9 @@ INSERT INTO t1 VALUES (0, 'Mod Zero'), (1, 'One'), (2, 'Two'), (3, 'Three'),
 (20, '0'), (21, '1'), (22, '2'), (23, '3'),
 (4, '4'), (5, '5'), (6, '6'), (7, '7'), (8, '8'), (9, '9');
 INSERT INTO t1 SELECT a + 30, b FROM t1 WHERE a >= 0;
+INSERT INTO t1 SELECT a + 60, b FROM t1 WHERE a >= 0;
+INSERT INTO t1 SELECT a + 120, b FROM t1 WHERE a >= 0;
+INSERT INTO t1 SELECT a + 240, b FROM t1 WHERE a >= 0;
 ANALYZE TABLE t1;
 EXPLAIN SELECT b FROM t1 WHERE b between 'L' and 'N' AND a > -100;
 DROP TABLE t1;
@@ -1015,3 +1025,7 @@ SELECT database_name, table_name FROM mysql.innodb_table_stats WHERE
 database_name = 'test_jfg';
 
 DROP DATABASE test_jfg;
+
+set global innodb_stats_persistent= @innodb_stats_persistent_save;
+set global innodb_stats_persistent_sample_pages=
+             @innodb_stats_persistent_sample_pages_save;

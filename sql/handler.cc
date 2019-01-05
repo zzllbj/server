@@ -2603,36 +2603,26 @@ LEX_CSTRING *handler::engine_name()
 }
 
 
-/**
-  The method returns the cost of the random I/O accesses when
-  index is used.
+/*
+  It is assumed that the value of the parameter 'ranges' can be only 0 or 1.
+  If ranges == 1 then the function returns the cost of index only scan
+  by index 'keyno' of one range containing 'rows' key entries.
+  If ranges == 0 then the function returns only the cost of copying
+  those key entries into the engine buffers.
 */
-
-double handler::get_io_cost(uint index, ha_rows rows, uint *length)
-{
-  uint len= table->key_info[index].key_length + ref_length;
-  if (index == table->s->primary_key && table->file->primary_key_is_clustered())
-    len= table->s->stored_rec_length;
-  double keys_per_block= (stats.block_size/2.0/len+1);
-  *length= len;
-  return (rows + keys_per_block-1)/ keys_per_block;
-}
-
 
 double handler::keyread_time(uint index, uint ranges, ha_rows rows)
 {
-  /*
-    It is assumed that we will read trough the whole key range and that all
-    key blocks are half full (normally things are much better). It is also
-    assumed that each time we read the next key from the index, the handler
-    performs a random seek, thus the cost is proportional to the number of
-    blocks read. This model does not take into account clustered indexes -
-    engines that support that (e.g. InnoDB) may want to overwrite this method.
-    The model counts in the time to read index entries from cache.
-  */
-  uint len;
-  return get_io_cost(index, rows, &len) +
-         len*rows/(stats.block_size+1)/TIME_FOR_COMPARE ;
+  DBUG_ASSERT(ranges == 0 || ranges == 1);
+  size_t len= table->key_info[index].key_length + ref_length;
+  if (index == table->s->primary_key && table->file->primary_key_is_clustered())
+    len= table->s->stored_rec_length;
+  uint keys_per_block= (stats.block_size/2.0/len+1);
+  ulonglong blocks= !rows ? 0 : (rows-1) / keys_per_block + 1;
+  double cost= (double)rows*len/(stats.block_size+1)*IDX_BLOCK_COPY_COST;
+  if (ranges)
+    cost+= blocks;
+  return cost;
 }
 
 void **handler::ha_data(THD *thd) const

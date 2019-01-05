@@ -2562,11 +2562,14 @@ typedef bool (*SKIP_INDEX_TUPLE_FUNC) (range_seq_t seq, range_id_t range_info);
 class Cost_estimate
 { 
 public:
-  double io_count;     /* number of I/O                 */
-  double avg_io_cost;  /* cost of an average I/O oper.  */
-  double cpu_cost;     /* cost of operations in CPU     */
-  double import_cost;  /* cost of remote operations     */
-  double mem_cost;     /* cost of used memory           */ 
+  double io_count;        /* number of I/O to fetch records                */
+  double avg_io_cost;     /* cost of an average I/O oper. to fetch records */
+  double idx_io_count;    /* number of I/O to read keys                    */
+  double idx_avg_io_cost; /* cost of an average I/O oper. to fetch records */
+  double cpu_cost;        /* total cost of operations in CPU               */
+  double idx_cpu_cost;    /* cost of operations in CPU for index           */
+  double import_cost;     /* cost of remote operations     */
+  double mem_cost;        /* cost of used memory           */
   
   enum { IO_COEFF=1 };
   enum { CPU_COEFF=1 };
@@ -2580,8 +2583,16 @@ public:
 
   double total_cost() 
   {
-    return IO_COEFF*io_count*avg_io_cost + CPU_COEFF * cpu_cost +
+    return IO_COEFF*io_count*avg_io_cost +
+           IO_COEFF*idx_io_count*idx_avg_io_cost +
+           CPU_COEFF*cpu_cost + 
            MEM_COEFF*mem_cost + IMPORT_COEFF*import_cost;
+  }
+
+  double index_only_cost()
+  {
+    return IO_COEFF*idx_io_count*idx_avg_io_cost +
+           CPU_COEFF*idx_cpu_cost;
   }
 
   /**
@@ -2591,30 +2602,48 @@ public:
   */
   bool is_zero() const
   {
-    return io_count == 0.0 && cpu_cost == 0.0 &&
+    return io_count == 0.0 && idx_io_count && cpu_cost == 0.0 &&
       import_cost == 0.0 && mem_cost == 0.0;
   }
 
   void reset()
   {
     avg_io_cost= 1.0;
-    io_count= cpu_cost= mem_cost= import_cost= 0.0;
+    idx_avg_io_cost= 1.0;
+    io_count= idx_io_count= cpu_cost= idx_cpu_cost= mem_cost= import_cost= 0.0;
   }
 
   void multiply(double m)
   {
     io_count *= m;
     cpu_cost *= m;
+    idx_io_count *= m;
+    idx_cpu_cost *= m;
     import_cost *= m;
     /* Don't multiply mem_cost */
   }
 
   void add(const Cost_estimate* cost)
   {
-    double io_count_sum= io_count + cost->io_count;
-    add_io(cost->io_count, cost->avg_io_cost);
-    io_count= io_count_sum;
+    if (cost->io_count)
+    {
+      double io_count_sum= io_count + cost->io_count;
+      avg_io_cost= (io_count * avg_io_cost +
+                    cost->io_count * cost->avg_io_cost)
+	            /io_count_sum;
+      io_count= io_count_sum;
+    }
+    if (cost->idx_io_count)
+    {
+      double idx_io_count_sum= idx_io_count + cost->idx_io_count;
+      idx_avg_io_cost= (idx_io_count * idx_avg_io_cost +
+                        cost->idx_io_count * cost->idx_avg_io_cost)
+	               /idx_io_count_sum;
+      idx_io_count= idx_io_count_sum;
+    }
     cpu_cost += cost->cpu_cost;
+    idx_cpu_cost += cost->idx_cpu_cost;
+    import_cost += cost->import_cost;
   }
 
   void add_io(double add_io_cnt, double add_avg_cost)
@@ -3235,6 +3264,11 @@ public:
   virtual double scan_time()
   { return ulonglong2double(stats.data_file_length) / IO_SIZE + 2; }
 
+  virtual double key_scan_time(uint index)
+  {
+    return keyread_time(index, 1, records());
+  }
+
   /**
      The cost of reading a set of ranges from the table using an index
      to access it.
@@ -3257,8 +3291,6 @@ public:
      @param rows     #of records to read
   */
   virtual double keyread_time(uint index, uint ranges, ha_rows rows);
-
-  double get_io_cost(uint index, ha_rows rows, uint *length);
 
   virtual const key_map *keys_to_use_for_scanning() { return &key_map_empty; }
 

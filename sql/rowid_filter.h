@@ -113,19 +113,25 @@
 class TABLE;
 class SQL_SELECT;
 
-/* Cost to write into filter */
-#define COST_WRITE      0.01
-/* Weight factor for filter sorting */
-#define CNST_SORT       0.01
+/* Cost to write rowid into array */
+#define ARRAY_WRITE_COST      0.005
+/* Factor used to calculate cost of sorting rowids in array */
+#define ARRAY_SORT_C          0.01
 /* Cost to evaluate condition */
 #define COST_COND_EVAL  0.2
+
+typedef enum
+{
+  ORDERED_ARRAY_CONTAINER,
+  BLOOM_FILTER_CONTAINER
+} Rowid_filter_container_type;
 
 class Range_filter_cost_info : public Sql_alloc
 {
 public:
   TABLE *table;
   uint key_no;
-  double cardinality;
+  double est_elements;
   double b;                         // intercept of the linear function
   double a;                         // slope of the linear function
   double selectivity;
@@ -137,27 +143,14 @@ public:
   /* Cost to lookup into filter */
   inline double lookup_cost()
   {
-    return log(cardinality)*0.01;
+    return log(est_elements)*0.01;
   }
-
-  /* IO accesses cost to access filter */
-  inline double filter_io_cost()
-  { return table->quick_key_io[key_no]; }
-
-  /* Cost to write elements in filter */
-  inline double filter_write_cost()
-  { return COST_WRITE*cardinality; }
-
-  /* Cost to sort elements in filter */
-  inline double filter_sort_cost()
-  { 
-    return CNST_SORT*cardinality*log(cardinality);
-  }
-  /* End of filter cost functions */
 
   Range_filter_cost_info() : table(0), key_no(0) {}
 
   void init(TABLE *tab, uint key_numb);
+
+  double build_cost(Rowid_filter_container_type container_type);
 
   inline double get_intersect_x(Range_filter_cost_info *filter)
   {

@@ -1499,7 +1499,7 @@ bool JOIN::make_range_filters()
       if (thd->is_error())
         DBUG_RETURN(1);
       DBUG_ASSERT(sel->quick);
-      elems= (uint) tab->filter->cardinality;
+      elems= (uint) tab->filter->est_elements;
       filter_container=
         new (thd->mem_root) Range_filter_ordered_array(tab->table, sel, elems);
       if (filter_container)
