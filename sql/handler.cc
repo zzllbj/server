@@ -3698,7 +3698,7 @@ void handler::print_error(int error, myf errflag)
           setup_keyinfo_hash(long_key);
         DBUG_VOID_RETURN;
       }
-      setup_table_hash(table);
+      table->re_setup_table();
     }
     textno=ER_DUP_KEY;
     break;
@@ -6384,19 +6384,18 @@ static int check_duplicate_long_entries(TABLE *table, handler *h, uchar *new_rec
   */
 static int check_duplicate_long_entries_update(TABLE *table, handler *h, uchar *new_rec)
 {
-  Field **f, *field;
-  int key_parts;
+  Field *field;
+  uint key_parts;
   int error= 0;
   KEY *keyinfo;
   KEY_PART_INFO *keypart;
-  bool is_update_handler_null= false;
   /*
      Here we are comparing whether new record and old record are same
      with respect to fields in hash_str
    */
   long reclength= table->record[1]-table->record[0];
   if (!table->update_handler)
-    clone_handler_for_update(current_thd, table);
+    table->clone_handler_for_update();
   for (uint i= 0; i < table->s->keys; i++)
   {
     keyinfo= table->key_info + i;

@@ -3906,8 +3906,6 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
       }
 
       cols2.rewind();
-      key_part_info->fieldnr= field;
-      key_part_info->offset=  (uint16) sql_field->offset;
       if (key->type == Key::FULLTEXT)
       {
 	if ((sql_field->real_field_type() != MYSQL_TYPE_STRING &&
@@ -3968,10 +3966,7 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	      DBUG_RETURN(TRUE);
         }
         else
-        {
           is_hash_field_needed= true;
-          column->length= 0;
-        }
 	  }
 	}
 #ifdef HAVE_SPATIAL
@@ -4035,6 +4030,8 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	}
       }
 
+      key_part_info->fieldnr= field;
+      key_part_info->offset=  (uint16) sql_field->offset;
       key_part_info->key_type=sql_field->pack_flag;
       uint key_part_length= sql_field->key_length;
 

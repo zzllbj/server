@@ -1055,7 +1055,8 @@ update_begin:
       break;
     }
   }
-  delete_update_handler(thd, table);
+  if (table->update_handler)
+    table->delete_update_handler();
   ANALYZE_STOP_TRACKING(&explain->command_tracker);
   table->auto_increment_field_not_null= FALSE;
   dup_key_found= 0;
@@ -2270,7 +2271,8 @@ multi_update::~multi_update()
   for (table= update_tables ; table; table= table->next_local)
   {
     table->table->no_keyread= table->table->no_cache= 0;
-    delete_update_handler(thd, table->table);
+    if (table->table->update_handler)
+      table->table->delete_update_handler();
     if (ignore)
       table->table->file->extra(HA_EXTRA_NO_IGNORE_DUP_KEY);
   }

@@ -1,4 +1,3 @@
---source include/not_valgrind.inc
 --source include/no_protocol.inc
 
 set @save_use_stat_tables=@@global.use_stat_tables;
@@ -44,7 +43,7 @@ while ($trial)
   --connect (con2,localhost,root,,)
   --send CALL p_analyze()
 
-  --let $run = 100
+  --let $run = 1
 
   while ($run)
   {

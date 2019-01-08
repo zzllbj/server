@@ -1,4 +1,5 @@
 let datadir=`select @@datadir`;
+--source include/have_partition.inc
 
 --echo #Structure of tests
 --echo #First we will check all option for

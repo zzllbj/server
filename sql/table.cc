@@ -8769,78 +8769,67 @@ int find_field_pos_in_hash(Item *hash_item, const  char * field_name)
 /*
    find total number of field in hash expr
 */
-inline int fields_in_hash_keyinfo(KEY *keyinfo)
+int fields_in_hash_keyinfo(KEY *keyinfo)
 {
   Item_func_hash * temp= (Item_func_hash *)
                      keyinfo->key_part->field->vcol_info->expr;
   return temp->argument_count();
 }
 
-inline void setup_keyinfo_hash(KEY *key_info)
+void setup_keyinfo_hash(KEY *key_info)
+{
+  uint no_of_keyparts= fields_in_hash_keyinfo(key_info);
+  key_info->key_part-= no_of_keyparts;
+  key_info->user_defined_key_parts= key_info->usable_key_parts=
+               key_info->ext_key_parts= no_of_keyparts;
+}
+
+void re_setup_keyinfo_hash(KEY *key_info)
 {
   while(!(key_info->key_part->field->flags & LONG_UNIQUE_HASH_FIELD))
     key_info->key_part++;
   key_info->user_defined_key_parts= key_info->usable_key_parts=
                key_info->ext_key_parts= 1;
 }
-
-inline void re_setup_keyinfo_hash(KEY *key_info)
-{
-
-  uint no_of_keyparts= fields_in_hash_keyinfo(key_info);
-  key_info->key_part-= no_of_keyparts;
-  key_info->user_defined_key_parts= key_info->usable_key_parts=
-               key_info->ext_key_parts= no_of_keyparts;
-}
 /**
   @brief clone of current handler.
   Creates a clone of handler used in update for
   unique hash key.
-  @param thd            Thread Object
-  @param table          Table Object
-  @return    handler object
 */
-void clone_handler_for_update(THD *thd, TABLE *table)
+void TABLE::clone_handler_for_update()
 {
   handler *update_handler= NULL;
-  if (!table->s->long_unique_table)
+  if (!s->long_unique_table)
     return;
-  update_handler= table->file->clone(table->s->normalized_path.str,
-                                     thd->mem_root);
-  update_handler->ha_external_lock(thd, F_RDLCK);
-  table->update_handler= update_handler;
+  update_handler= file->clone(s->normalized_path.str,
+                                     in_use->mem_root);
+  update_handler->ha_external_lock(in_use, F_RDLCK);
+  this->update_handler= update_handler;
   return;
 }
 
 /**
  @brief Deletes update handler object
- @param thd   Thread Object
- @param table Table Object
 */
-void delete_update_handler(THD *thd, TABLE *table)
+void TABLE::delete_update_handler()
 {
-  if (table->update_handler)
-  {
-    table->update_handler->ha_external_lock(thd, F_UNLCK);
-    table->update_handler->ha_close();
-    delete table->update_handler;
-    table->update_handler= NULL;
-  }
+  update_handler->ha_external_lock(in_use, F_UNLCK);
+  update_handler->ha_close();
+  delete update_handler;
+  this->update_handler= NULL;
 }
 /**
  @brief This function makes table object with
-        long unique keys ready for storage engine.
-        It makes key_part of HA_LONG_UNIQUE_HASH point to
-        hash key_part.
+        long unique keys ready for optimizer and alter table
  @param table Table object
  */
-void setup_table_hash(TABLE *table)
+void TABLE::setup_table_hash()
 {
 
-  if (!table->s->long_unique_table)
+  if (!this->s->long_unique_table)
     return;
-  KEY *keyinfo= table->key_info;
-  for (uint i= 0; i < table->s->keys; i++, keyinfo++)
+  KEY *keyinfo= key_info;
+  for (uint i= 0; i < this->s->keys; i++, keyinfo++)
     if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
       setup_keyinfo_hash(keyinfo);
 }
@@ -8849,12 +8838,12 @@ void setup_table_hash(TABLE *table)
  @brief Revert the effect of setup_table_hash
  @param table Table Object
  */
-void re_setup_table(TABLE *table)
+void TABLE::re_setup_table()
 {
-  if (!table->s->long_unique_table)
+  if (!s->long_unique_table)
     return;
-  KEY *keyinfo= table->key_info;
-  for (uint i= 0; i < table->s->keys; i++, keyinfo++)
+  KEY *keyinfo= key_info;
+  for (uint i= 0; i < s->keys; i++, keyinfo++)
     if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
       re_setup_keyinfo_hash(keyinfo);
 }

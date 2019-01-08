@@ -994,6 +994,8 @@ void close_thread_table(THD *thd, TABLE **table_ptr)
     table->file->update_global_table_stats();
     table->file->update_global_index_stats();
   }
+  if (table->update_handler)
+    table->delete_update_handler();
 
   /*
     This look is needed to allow THD::notify_shared_lock() to

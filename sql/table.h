@@ -354,21 +354,14 @@ enum field_visibility_t {
 
 int find_field_pos_in_hash(Item *hash_item, const char * field_name);
 
-inline int fields_in_hash_keyinfo(KEY *keyinfo);
+int fields_in_hash_keyinfo(KEY *keyinfo);
 
-inline void setup_keyinfo_hash(KEY *key_info);
+void setup_keyinfo_hash(KEY *key_info);
 
-inline void re_setup_keyinfo_hash(KEY *key_info);
+void re_setup_keyinfo_hash(KEY *key_info);
 
 Field * field_ptr_in_hash_str(Item *hash_item, int index);
 
-void clone_handler_for_update(THD *thd, TABLE *table);
-
-void delete_update_handler(THD *thd, TABLE *table);
-
-void setup_table_hash(TABLE *table);
-
-void re_setup_table(TABLE *table);
 
 /**
   Category of table found in the table share.
@@ -1575,6 +1568,10 @@ public:
   int delete_row();
   void vers_update_fields();
   void vers_update_end();
+  void clone_handler_for_update();
+  void delete_update_handler();
+  void setup_table_hash();
+  void re_setup_table();
 
 /** Number of additional fields used in versioned tables */
 #define VERSIONING_FIELDS 2
