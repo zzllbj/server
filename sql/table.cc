@@ -2261,44 +2261,10 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
     {
        /*
          1. We need set value in hash key_part
-         2. Set vcol_info in corresponding db_row_hash_ field
        */
 
       if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
       {
-        /*
-        DBUG_ASSERT(share->field[hash_field_used_no]->flags & LONG_UNIQUE_HASH_FIELD);
-        temp_key_part= keyinfo->key_part;
-        String hash_str;
-        hash_str.append(ha_hash_str.str,ha_hash_str.length);
-        hash_str.append(STRING_WITH_LEN("("));
-                 temp_key_part++)
-        {
-          if (j)
-            hash_str.append(STRING_WITH_LEN(" , "));
-          temp_fld= share->field[temp_key_part->fieldnr-1];
-          DBUG_ASSERT(temp_fld);
-          if (!temp_key_part->length ||
-              temp_key_part->length == temp_fld->max_display_length())
-            append_identifier(thd, &hash_str, temp_fld->field_name.str,
-                            strlen(temp_fld->field_name.str));
-          else
-          {
-            hash_str.append(STRING_WITH_LEN(" LEFT("));
-            append_identifier(thd, &hash_str, temp_fld->field_name.str,
-                            strlen(temp_fld->field_name.str));
-            char temp[20];
-            my_snprintf((char *)temp, 20, ", %u )", temp_key_part->length);
-            hash_str.append((char *)temp);
-          }
-        }
-        hash_str.append(STRING_WITH_LEN(")"));
-        char * expr_str= (char *)alloc_root(&share->mem_root, hash_str.length()+1);
-        strncpy(expr_str, hash_str.ptr(), hash_str.length());
-        //v->hash_expr.str= expr_str;
-        //v->hash_expr.length= hash_str.length();
-        hash_fld->vcol_info= v;
-        */
         share->long_unique_table= 1;
         hash_keypart= keyinfo->key_part + keyinfo->user_defined_key_parts;
         hash_keypart->length= HA_HASH_KEY_LENGTH_WITHOUT_NULL;
@@ -2311,62 +2277,6 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
                        - HA_HASH_FIELD_LENGTH*(share->fields - hash_field_used_no);
         hash_keypart->fieldnr= hash_field_used_no + 1;
         hash_field= share->field[hash_field_used_no];
-        /*
-           We have to create Item_func_hash for the fields of long unique(a,b..)
-           But since we do not know how many fields , and which fields are there
-           We will look into frm (we have saved key_info_ptr)
-        */
-#ifdef backchodi
-        if (new_frm_ver >= 110202) //Idk why frm version is 4 I thought it will >=10
-        {
-          //Our goal is to get field no of long unique(a1,a2 .....)
-          key_info_ptr+= keys*8;// Why ? answer in create_key_info
-          int field_no, length;
-          Field *hash_fld;
-          //We have to remove entry from thd->free_list
-          Item *temp_free_list= thd->free_list;
-          Item *l_item;
-          List<Item > *field_list= new (&share->mem_root) List<Item >();
-          //We havent reseted the user_defined_key_parts yet, reason below
-          // why +9 becuase frm_version > 1
-          for (uint j= 0; j < keyinfo->user_defined_key_parts; j++,
-                  key_info_ptr+=9)
-          {
-            field_no= (uint16) (uint2korr(key_info_ptr) & FIELD_NR_MASK);
-            temp_field= share->field[field_no];
-            length= uint2korr(key_info_ptr + 7);
-            /*
-               We wont add Item_field because it requires field->table object
-               which is not created yet , second thing we dont need Item_field
-               just Item_int will do its purpose, in open_table_from_frm we will
-               create item_field using field no from item_int
-             */
-            //TODO a much better be have item list with X field no
-            // if there is length then -1 X(field no) Y(length)
-            // So suppose if we unique(a,b(2000),c)
-            // 1, -1 , 2, 2000,3
-            if(!length)
-              l_item= new(&share->mem_root)Item_int(thd, field_no);
-            else
-            {
-              l_item= new(&share->mem_root)Item_func_left(thd,
-                      new(&share->mem_root)Item_int(thd, field_no),
-                      new (&share->mem_root)Item_int(thd, length));
-
-            }
-            field_list->push_back(l_item, &share->mem_root);
-          }
-          Item_func_hash *hash_item= new(&share->mem_root)Item_func_hash(thd, *field_list);
-        Virtual_column_info *v= new (&share->mem_root) Virtual_column_info();
-          v->expr= hash_item;
-          hash_field->vcol_info= v;
-          keyinfo->user_defined_key_parts= 1;
-          keyinfo->usable_key_parts= 1;
-          keyinfo->ext_key_parts= 1;
-          thd->free_list= temp_free_list;
-
-        }
-#endif
         hash_field->flags|= LONG_UNIQUE_HASH_FIELD;//Used in parse_vcol_defs
         share->virtual_fields++;
         hash_field_used_no--;
