@@ -4114,10 +4114,13 @@ mysql_prepare_create_table(THD *thd, HA_CREATE_INFO *create_info,
 	  }
     }
       }
-      /* We can not store key_part_length more then 2^15 - 1 in frm
+      /* We can not store key_part_length more then 2^16 - 1 in frm
          So we will simply make it zero */
-      if (is_hash_field_needed && key_part_length >= (2<<15) - 1)
-        key_part_info->length= 0;
+      if (is_hash_field_needed && column->length > (2<<15) - 1)
+      {
+	    my_error(ER_TOO_LONG_KEY, MYF(0), file->max_key_length());
+	    DBUG_RETURN(TRUE);
+	  }
       else
         key_part_info->length= (uint16) key_part_length;
       /* Use packed keys for long strings on the first column */
@@ -8280,7 +8283,7 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
     if (key_info->flags & HA_INVISIBLE_KEY)
       continue;
     if (key_info->algorithm == HA_KEY_ALG_LONG_HASH)
-      re_setup_keyinfo_hash(key_info);
+      setup_keyinfo_hash(key_info);
     const char *key_name= key_info->name.str;
     Alter_drop *drop;
     drop_it.rewind();
@@ -10582,14 +10585,14 @@ copy_data_between_tables(THD *thd, TABLE *from, TABLE *to,
                     == HA_KEY_ALG_LONG_HASH)
             {
               long_key= to->key_info + key_nr;
-              re_setup_keyinfo_hash(long_key);
+                setup_keyinfo_hash(long_key);
             }
             print_keydup_error(to,
                                key_nr >= to->s->keys ? NULL :
                                    &to->key_info[key_nr],
                                err_msg, MYF(0));
             if (long_key)
-              setup_keyinfo_hash(long_key);
+              re_setup_keyinfo_hash(long_key);
           }
           else
             to->file->print_error(error, MYF(0));
