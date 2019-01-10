@@ -2923,6 +2923,23 @@ public:
   Explain_delete* save_explain_delete_data(MEM_ROOT *mem_root, THD *thd);
 };
 
+struct Account_options
+{
+  Account_options()
+    : update_account_locking(false)
+    , account_locked_value(false)
+  { }
+
+  void reset()
+  {
+    update_account_locking= false;
+    account_locked_value= false;
+  }
+
+  bool update_account_locking;
+  bool account_locked_value;
+};
+
 
 class Query_arena_memroot;
 /* The state of the lex parsing. This is saved in the THD struct */
@@ -3013,6 +3030,9 @@ public:
     I.e. the value of DEFINER clause.
   */
   LEX_USER *definer;
+
+  /* Used in ALTER/CREATE user to store account locking options */
+  Account_options account_options;
 
   Table_type table_type;                        /* Used for SHOW CREATE */
   List<Key_part_spec> ref_list;

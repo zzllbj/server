@@ -5245,22 +5245,6 @@ end_with_restore_list:
     if (!res)
       my_ok(thd);
     break;
-#ifndef NO_EMBEDDED_ACCESS_CHECKS
-  case SQLCOM_LOCK_USER:
-  case SQLCOM_UNLOCK_USER:
-  {
-    if (check_global_access(thd, SUPER_ACL))
-      break;
-
-    WSREP_TO_ISOLATION_BEGIN(WSREP_MYSQL_DB, NULL, NULL);
-
-    bool lock_cmd = lex->sql_command == SQLCOM_LOCK_USER;
-    if (!mysql_lock_user(thd, lex->users_list, lock_cmd))
-      my_ok(thd);
-
-    break;
-  }
-#endif /*NO_EMBEDDED_ACCESS_CHECKS*/
   case SQLCOM_CREATE_DB:
   {
     if (prepare_db_action(thd, lex->create_info.or_replace() ?

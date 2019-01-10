@@ -322,6 +322,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 */
 %token  ABORT_SYM                     /* INTERNAL (used in lex) */
 %token  ACCESSIBLE_SYM
+%token  ACCOUNT_SYM
 %token  ADD                           /* SQL-2003-R */
 %token  ALL                           /* SQL-2003-R */
 %token  ALTER                         /* SQL-2003-R */
@@ -1051,7 +1052,6 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd>  UNKNOWN_SYM                   /* SQL-2003-R */
 %token  <kwd>  UNTIL_SYM
 %token  <kwd>  UPGRADE_SYM
-%token  <kwd>  USERS
 %token  <kwd>  USER_SYM                      /* SQL-2003-R */
 %token  <kwd>  USE_FRM
 %token  <kwd>  VALUE_SYM                     /* SQL-2003-R */
@@ -1537,7 +1537,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
         opt_attribute opt_attribute_list attribute column_list column_list_id
         opt_column_list grant_privileges grant_ident grant_list grant_option
         object_privilege object_privilege_list user_list user_and_role_list
-        rename_list table_or_tables user_or_users
+        rename_list table_or_tables
         clear_privileges flush_options flush_option
         opt_flush_lock flush_lock flush_options_list
         equal optional_braces
@@ -2415,7 +2415,7 @@ create:
             Lex->pop_select(); //main select
           }
         | create_or_replace USER_SYM opt_if_not_exists clear_privileges
-          grant_list opt_require_clause opt_resource_options
+          grant_list opt_require_clause opt_resource_options opt_account_options
           {
             if (unlikely(Lex->set_command_with_check(SQLCOM_CREATE_USER,
                                                      $1 | $3)))
@@ -8003,7 +8003,7 @@ alter:
           } OPTIONS_SYM '(' server_options_list ')' { }
           /* ALTER USER foo is allowed for MySQL compatibility. */
         | ALTER opt_if_exists USER_SYM clear_privileges grant_list
-          opt_require_clause opt_resource_options
+          opt_require_clause opt_resource_options opt_account_options
           {
             Lex->create_info.set($2);
             Lex->sql_command= SQLCOM_ALTER_USER;
@@ -8039,6 +8039,29 @@ alter:
             Lex->pop_select(); //main select
             if (Lex->check_main_unit_semantics())
               MYSQL_YYABORT;
+          }
+        ;
+
+opt_account_options:
+        /* Nothing */ {}
+        | opt_account_options_list
+        ;
+
+opt_account_options_list:
+          opt_account_option
+        | opt_account_options_list opt_account_option
+        ;
+
+opt_account_option:
+          ACCOUNT_SYM LOCK_SYM
+          {
+            Lex->account_options.update_account_locking= true;
+            Lex->account_options.account_locked_value= true;
+          }
+        | ACCOUNT_SYM UNLOCK_SYM
+          {
+            Lex->account_options.update_account_locking= true;
+            Lex->account_options.account_locked_value= false;
           }
         ;
 
@@ -15941,6 +15964,7 @@ keyword_data_type:
 */
 keyword_sp_var_and_label:
           ACTION
+        | ACCOUNT_SYM
         | ADDDATE_SYM
         | ADMIN_SYM
         | AFTER_SYM
@@ -16242,7 +16266,6 @@ keyword_sp_var_and_label:
         | UNDOFILE_SYM
         | UNKNOWN_SYM
         | UNTIL_SYM
-        | USERS
         | USER_SYM           %prec PREC_BELOW_CONTRACTION_TOKEN2
         | USE_FRM
         | VARIABLES
@@ -16743,17 +16766,6 @@ lock:
           }
           table_lock_list opt_lock_wait_timeout
           {}
-          | LOCK_SYM user_or_users
-          {
-            LEX *lex= Lex;
-
-            if (unlikely(lex->sphead))
-              my_yyabort_error((ER_SP_BADSTATEMENT, MYF(0), "LOCK"));
-
-            lex->sql_command= SQLCOM_LOCK_USER;
-          }
-          clear_privileges user_list
-          {}
         ;
 
 opt_lock_wait_timeout:
@@ -16781,11 +16793,6 @@ table_or_tables:
 table_lock_list:
           table_lock
         | table_lock_list ',' table_lock
-        ;
-
-user_or_users:
-          USER_SYM         { }
-        | USERS            { }
         ;
 
 table_lock:
@@ -16826,17 +16833,6 @@ unlock:
             lex->sql_command= SQLCOM_UNLOCK_TABLES;
           }
           table_or_tables
-          {}
-          | UNLOCK_SYM user_or_users
-          {
-            LEX *lex= Lex;
-
-            if (unlikely(lex->sphead))
-              my_yyabort_error((ER_SP_BADSTATEMENT, MYF(0), "UNLOCK"));
-
-            lex->sql_command= SQLCOM_UNLOCK_USER;
-          }
-          clear_privileges user_list
           {}
         ;
 

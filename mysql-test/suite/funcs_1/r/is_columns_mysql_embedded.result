@@ -190,6 +190,7 @@ def	mysql	time_zone_transition_type	Is_DST	4	0	NO	tinyint	NULL	NULL	3	0	NULL	NUL
 def	mysql	time_zone_transition_type	Offset	3	0	NO	int	NULL	NULL	10	0	NULL	NULL	NULL	int(11)					NEVER	NULL
 def	mysql	time_zone_transition_type	Time_zone_id	1	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	NULL	int(10) unsigned	PRI				NEVER	NULL
 def	mysql	time_zone_transition_type	Transition_type_id	2	NULL	NO	int	NULL	NULL	10	0	NULL	NULL	NULL	int(10) unsigned	PRI				NEVER	NULL
+def	mysql	user	account_locked	48	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	Alter_priv	17	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	Alter_routine_priv	28	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	authentication_string	43	''	NO	longtext	4294967295	4294967295	NULL	NULL	NULL	utf8mb4	utf8mb4_bin	longtext					NEVER	NULL
@@ -210,7 +211,6 @@ def	mysql	user	Grant_priv	14	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_s
 def	mysql	user	Host	1	''	NO	char	60	180	NULL	NULL	NULL	utf8	utf8_bin	char(60)					NEVER	NULL
 def	mysql	user	Index_priv	16	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	Insert_priv	5	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
-def	mysql	user	is_locked	48	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	is_role	45	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	Lock_tables_priv	21	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)					NEVER	NULL
 def	mysql	user	max_connections	40	0	NO	bigint	NULL	NULL	20	0	NULL	NULL	NULL	bigint(20) unsigned					NEVER	NULL
@@ -562,7 +562,7 @@ NULL	mysql	user	max_user_connections	bigint	NULL	NULL	NULL	NULL	bigint(21)
 1.0000	mysql	user	is_role	varchar	1	1	latin1	latin1_swedish_ci	varchar(1)
 1.0000	mysql	user	default_role	longtext	4294967295	4294967295	utf8mb4	utf8mb4_bin	longtext
 NULL	mysql	user	max_statement_time	decimal	NULL	NULL	NULL	NULL	decimal(12,6)
-1.0000	mysql	user	is_locked	varchar	1	1	latin1	latin1_swedish_ci	varchar(1)
+1.0000	mysql	user	account_locked	varchar	1	1	latin1	latin1_swedish_ci	varchar(1)
 Warnings:
 Warning	1286	Unknown storage engine 'InnoDB'
 Warning	1286	Unknown storage engine 'InnoDB'

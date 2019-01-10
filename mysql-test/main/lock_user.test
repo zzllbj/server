@@ -8,41 +8,47 @@ create user user1@localhost;
 create user user2@localhost;
 
 --echo #
---echo # Only SUPER_ACL privileged users should be able to lock/unlock.
+--echo # Only privileged users should be able to lock/unlock.
 --echo #
-lock user user1@localhost;
-unlock user user1@localhost;
+alter user user1@localhost account lock;
+alter user user1@localhost account unlock;
+create user user3@localhost account lock;
+drop user user3@localhost;
 
 connect(con1,localhost,user1);
 connection con1;
 --error ER_SPECIFIC_ACCESS_DENIED_ERROR
-lock user user2@localhost;
+alter user user2@localhost account lock;
 disconnect con1;
 connection default;
 
 --echo #
---echo # LOCK USER USER1 should deny the connection of user1,
+--echo # ALTER USER USER1 ACCOUNT LOCK should deny the connection of user1,
 --echo # but it should allow user2 to connect.
 --echo #
 
-lock user user1@localhost;
+alter user user1@localhost account lock;
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
 --error ER_LOCKED_ACCOUNT
 connect(con1,localhost,user1);
 connect(con2,localhost,user2);
 disconnect con2;
 connection default;
+alter user user1@localhost account unlock;
 
 --echo #
 --echo # A user shouldn't be able to lock itself out
 --echo #
 
-connect(conr,localhost,root);
-connection conr;
+create user newuser@localhost;
+grant CREATE USER on *.* to newuser@localhost;
+connect(con1,localhost,newuser);
+connection con1;
 --error ER_CANNOT_USER
-lock user root@localhost;
-disconnect conr;
+alter user newuser@localhost account lock;
+disconnect con1;
 connection default;
+drop user newuser@localhost;
 
 --echo #
 --echo # Given 2 users: foo@'local%', foo@'%'
@@ -52,12 +58,12 @@ connection default;
 
 create user foo@'local%';
 create user foo@'%';
-grant SUPER on *.* to foo@'local%';
+grant CREATE USER on *.* to foo@'local%';
 connect(confoo,localhost,foo);
 connection confoo;
-lock user foo@'%';
+alter user foo@'%' account lock;
 --error ER_CANNOT_USER
-lock user foo@'local%';
+alter user foo@'local%' account lock;
 
 disconnect confoo;
 connection default;
@@ -65,53 +71,70 @@ drop user foo@'local%';
 drop user foo;
 
 --echo #
---echo # Passing an incorrect user should be invalid
+--echo # Passing an incorrect user should return an error unless
+--echo # IF EXISTS is used
 --echo #
 
---error ER_PASSWORD_NO_MATCH
-lock user inexistentUser@localhost;
+--error ER_CANNOT_USER
+alter user inexistentUser@localhost account lock;
+
+alter if exists user inexistentUser@localhost account lock;
+
+--echo #
+--echo # Passing an existing user to CREATE should not be allowed
+--echo # and it should not change the locking state of the current user
+--echo #
+
+show grants for user1@localhost;
+--error ER_CANNOT_USER
+create user user1@localhost account lock;
+show grants for user1@localhost;
 
 --echo #
 --echo # Passing multiple users should lock them all
 --echo #
 
-lock users user1@localhost, user2@localhost;
+alter user user1@localhost, user2@localhost account lock;
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
 --error ER_LOCKED_ACCOUNT
 connect(con1,localhost,user1);
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
 --error ER_LOCKED_ACCOUNT
 connect(con2,localhost,user2);
-unlock users user1@localhost, user2@localhost;
+alter user user1@localhost, user2@localhost account unlock;
 
 --echo #
 --echo # The locking state is preserved after acl reload
 --echo #
 
-lock user user1@localhost;
+alter user user1@localhost account lock;
 flush privileges;
 --replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
 --error ER_LOCKED_ACCOUNT
 connect(con1,localhost,user1);
+alter user user1@localhost account unlock;
 
 --echo #
 --echo # JSON functions on global_priv reflect the locking state of an account
 --echo #
 
-lock user user1@localhost;
-select host, user, JSON_VALUE(Priv, '$.is_locked') from mysql.global_priv where user='user1';
-unlock user user1@localhost;
-select host, user, JSON_VALUE(Priv, '$.is_locked') from mysql.global_priv where user='user1';
+alter user user1@localhost account lock;
+select host, user, JSON_VALUE(Priv, '$.account_locked') from mysql.global_priv where user='user1';
+alter user user1@localhost account unlock;
+select host, user, JSON_VALUE(Priv, '$.account_locked') from mysql.global_priv where user='user1';
 
 --echo #
 --echo # SHOW GRANTS correctly displays the account locking state for an user
 --echo #
 
 show grants for user1@localhost;
-lock user user1@localhost;
+alter user user1@localhost account lock;
 show grants for user1@localhost;
-unlock user user1@localhost;
+alter user user1@localhost account unlock;
 show grants for user1@localhost;
+create user newuser@localhost account lock;
+show grants for newuser@localhost;
+drop user newuser@localhost;
 
 drop user user1@localhost;
 drop user user2@localhost;

@@ -83,7 +83,7 @@ CREATE DEFINER=root@localhost SQL SECURITY DEFINER VIEW IF NOT EXISTS user AS SE
   ELT(IFNULL(JSON_VALUE(Priv, '$.is_role'), 0) + 1, 'N', 'Y') AS is_role,
   IFNULL(JSON_VALUE(Priv, '$.default_role'), '') AS default_role,
   CAST(IFNULL(JSON_VALUE(Priv, '$.max_statement_time'), 0.0) AS DECIMAL(12,6)) AS max_statement_time,
-  ELT(IFNULL(JSON_VALUE(Priv, '$.is_locked'), 0) + 1, 'N', 'Y') AS is_locked
+  ELT(IFNULL(JSON_VALUE(Priv, '$.account_locked'), 0) + 1, 'N', 'Y') AS account_locked
   FROM global_priv;
 
 -- Remember for later if user table already existed
