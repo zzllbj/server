@@ -643,15 +643,17 @@ ALTER TABLE user ADD plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL,
 ALTER TABLE user MODIFY plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL,
                  MODIFY authentication_string TEXT NOT NULL;
 ALTER TABLE user ADD password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+ALTER TABLE user ADD password_last_changed datetime NULL;
+ALTER TABLE user ADD password_lifetime int(20) unsigned NULL;
+ALTER TABLE user ADD account_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
 ALTER TABLE user ADD is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
 ALTER TABLE user ADD default_role char(80) binary DEFAULT '' NOT NULL;
 ALTER TABLE user ADD max_statement_time decimal(12,6) DEFAULT 0 NOT NULL;
 -- Somewhere above, we ran ALTER TABLE user .... CONVERT TO CHARACTER SET utf8 COLLATE utf8_bin.
 --  we want password_expired column to have collation utf8_general_ci.
 ALTER TABLE user MODIFY password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
-ALTER TABLE user MODIFY is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
-ALTER TABLE user ADD account_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER max_statement_time;
 ALTER TABLE user MODIFY account_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+ALTER TABLE user MODIFY is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
 
 -- Checking for any duplicate hostname and username combination are exists.
 -- If exits we will throw error.
@@ -806,9 +808,12 @@ IF 'BASE TABLE' = (select table_type from information_schema.tables where table_
                     'max_statement_time', max_statement_time,
                     'plugin', if(plugin>'',plugin,if(length(password)=16,'mysql_old_password','mysql_native_password')),
                     'authentication_string', if(plugin>'',authentication_string,password),
+                    'password_expired', 'Y'=password_expired,
+                    'password_last_changed', password_last_changed,
+                    'password_lifetime', password_lifetime,
+                    'account_locked', 'Y'=account_locked,
                     'default_role', default_role,
-                    'is_role', 'Y'=is_role,
-                    'account_locked', 'Y'=account_locked)) as Priv
+                    'is_role', 'Y'=is_role)) as Priv
   FROM user;
   DROP TABLE user;
 END IF//

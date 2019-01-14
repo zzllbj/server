@@ -45,10 +45,12 @@ CREATE TABLE mysql.user (
   plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL,
   authentication_string TEXT NOT NULL,
   password_expired ENUM('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
+  password_last_changed datetime NULL,
+  password_lifetime int(20) unsigned NULL,
+  account_locked enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   is_role enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   default_role char(80) binary DEFAULT '' NOT NULL,
   max_statement_time decimal(12,6) DEFAULT 0 NOT NULL,
-  account_locked enum('N','Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL,
   PRIMARY KEY Host (Host,User)
 ) engine=Aria transactional=1 CHARACTER SET utf8 COLLATE utf8_bin comment='Users and global privileges';
 insert mysql.user select * from mysql.user_bak;

@@ -117,7 +117,7 @@ alter user user1@localhost account lock;
 show grants for user1@localhost;
 Grants for user1@localhost
 GRANT USAGE ON *.* TO 'user1'@'localhost'
-LOCK USER 'user1'@'localhost'
+ALTER USER 'user1'@'localhost' ACCOUNT LOCK
 alter user user1@localhost account unlock;
 show grants for user1@localhost;
 Grants for user1@localhost
@@ -126,7 +126,7 @@ create user newuser@localhost account lock;
 show grants for newuser@localhost;
 Grants for newuser@localhost
 GRANT USAGE ON *.* TO 'newuser'@'localhost'
-LOCK USER 'newuser'@'localhost'
+ALTER USER 'newuser'@'localhost' ACCOUNT LOCK
 drop user newuser@localhost;
 drop user user1@localhost;
 drop user user2@localhost;

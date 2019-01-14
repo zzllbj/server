@@ -778,7 +778,8 @@ class Grant_table_base
  protected:
   friend class Grant_tables;
 
-  Grant_table_base() : start_priv_columns(0), end_priv_columns(0), m_table(0)
+  Grant_table_base() : start_priv_columns(0), end_priv_columns(0),
+                       end_security_columns(0), m_table(0)
   { }
 
   /* Compute how many privilege columns this table has. This method
@@ -805,12 +806,25 @@ class Grant_table_base
       else if (start_priv_columns)
           break;
     }
+
+    end_security_columns= end_priv_columns;
+    for (; end_security_columns < num_fields(); end_security_columns++)
+    {
+      Field *field= m_table->field[end_security_columns];
+      const char *colname= field->field_name.str;
+      if (field->real_type() == MYSQL_TYPE_ENUM &&
+         !strcmp(colname, "is_role"))
+        break;
+    }
   }
 
   /* The index at which privilege columns start. */
   uint start_priv_columns;
   /* The index after the last privilege column */
   uint end_priv_columns;
+  /* The index after the last security column, i.e. index of is_role. This index
+     is equal to num_fields if the is_role column does not exist */
+  uint end_security_columns;
 
   TABLE *m_table;
 };
@@ -1075,48 +1089,56 @@ class User_table_tabular: public User_table
   }
   double get_max_statement_time () const
   {
-    Field *f= get_field(end_priv_columns + 13, MYSQL_TYPE_NEWDECIMAL);
+    Field *f= get_field(end_security_columns + 2, MYSQL_TYPE_NEWDECIMAL);
     return f ? f->val_real() : 0;
   }
   int set_max_statement_time (double x) const
   {
-    if (Field *f= get_field(end_priv_columns + 13, MYSQL_TYPE_NEWDECIMAL))
+    if (Field *f= get_field(end_security_columns + 2, MYSQL_TYPE_NEWDECIMAL))
       return f->store(x);
     else
       return 1;
   }
   bool get_is_role () const
   {
-    Field *f= get_field(end_priv_columns + 11, MYSQL_TYPE_ENUM);
+    Field *f= get_field(end_security_columns, MYSQL_TYPE_ENUM);
     return f ? f->val_int()-1 : 0;
   }
   int set_is_role (bool x) const
   {
-    if (Field *f= get_field(end_priv_columns + 11, MYSQL_TYPE_ENUM))
+    if (Field *f= get_field(end_security_columns, MYSQL_TYPE_ENUM))
       return f->store(x+1, 0);
     else
       return 1;
   }
   const char* get_default_role (MEM_ROOT *root) const
   {
-    Field *f= get_field(end_priv_columns + 12, MYSQL_TYPE_STRING);
+    Field *f= get_field(end_security_columns + 1, MYSQL_TYPE_STRING);
     return f ? ::get_field(root,f) : 0;
   }
   int set_default_role (const char *s, size_t l) const
   {
-    if (Field *f= get_field(end_priv_columns + 12, MYSQL_TYPE_STRING))
+    if (Field *f= get_field(end_security_columns + 1, MYSQL_TYPE_STRING))
       return f->store(s, l, system_charset_info);
     else
       return 1;
   }
   bool get_account_locked () const
   {
-    Field *f= get_field(end_priv_columns + 14, MYSQL_TYPE_ENUM);
+    uint field_num= end_priv_columns + 13;
+    if (field_num >= end_security_columns)
+      return 0;
+
+    Field *f= get_field(field_num, MYSQL_TYPE_ENUM);
     return f ? f->val_int()-1 : 0;
   }
   int set_account_locked (bool x) const
   {
-    if (Field *f= get_field(end_priv_columns + 14, MYSQL_TYPE_ENUM))
+    uint field_num= end_priv_columns + 13;
+    if (field_num >= end_security_columns)
+      return 1;
+
+    if (Field *f= get_field(field_num, MYSQL_TYPE_ENUM))
       return f->store(x+1, 0);
     else
       return 1;
@@ -8780,11 +8802,12 @@ static bool show_account_locked(THD *thd, const char *username,
 
   String grant(buff,sizeof(buff),system_charset_info);
   grant.length(0);
-  grant.append(STRING_WITH_LEN("LOCK USER '"));
+  grant.append(STRING_WITH_LEN("ALTER USER '"));
   grant.append(user);
   grant.append(STRING_WITH_LEN("'@'"));
   grant.append(host);
   grant.append(STRING_WITH_LEN("'"));
+  grant.append(STRING_WITH_LEN(" ACCOUNT LOCK"));
 
   protocol->prepare_for_resend();
   protocol->store(grant.ptr(),grant.length(),grant.charset());

@@ -52,18 +52,18 @@ max_user_connections	int(11)	NO		0
 plugin	char(64)	NO			
 authentication_string	text	NO		NULL	
 password_expired	enum('N','Y')	NO		N	
+password_last_changed	datetime	YES		NULL	
+password_lifetime	int(20) unsigned	YES		NULL	
+account_locked	enum('N','Y')	NO		N	
 is_role	enum('N','Y')	NO		N	
 default_role	char(80)	NO			
 max_statement_time	decimal(12,6)	NO		0.000000	
-account_locked	enum('N','Y')	NO		N	
 #
 # Drop the password column.
 #
 alter table mysql.user drop column password,
 drop column is_role,
-drop column default_role,
-add column password_last_changed timestamp null default null after password_expired,
-add column password_lifetime smallint unsigned after password_last_changed;
+drop column default_role;
 flush privileges;
 #
 # Create users without the password column present.
