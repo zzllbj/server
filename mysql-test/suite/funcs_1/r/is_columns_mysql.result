@@ -229,6 +229,7 @@ def	mysql	user	Grant_priv	14	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_s
 def	mysql	user	Host	1	''	NO	char	60	180	NULL	NULL	NULL	utf8	utf8_bin	char(60)			select,insert,update,references		NEVER	NULL
 def	mysql	user	Index_priv	16	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)			select,insert,update,references		NEVER	NULL
 def	mysql	user	Insert_priv	5	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)			select,insert,update,references		NEVER	NULL
+def	mysql	user	is_locked	48	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)			select,insert,update,references		NEVER	NULL
 def	mysql	user	is_role	45	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)			select,insert,update,references		NEVER	NULL
 def	mysql	user	Lock_tables_priv	21	NULL	YES	varchar	1	1	NULL	NULL	NULL	latin1	latin1_swedish_ci	varchar(1)			select,insert,update,references		NEVER	NULL
 def	mysql	user	max_connections	40	0	NO	bigint	NULL	NULL	20	0	NULL	NULL	NULL	bigint(20) unsigned			select,insert,update,references		NEVER	NULL
@@ -583,3 +584,4 @@ NULL	mysql	user	max_user_connections	bigint	NULL	NULL	NULL	NULL	bigint(21)
 1.0000	mysql	user	is_role	varchar	1	1	latin1	latin1_swedish_ci	varchar(1)
 1.0000	mysql	user	default_role	longtext	4294967295	4294967295	utf8mb4	utf8mb4_bin	longtext
 NULL	mysql	user	max_statement_time	decimal	NULL	NULL	NULL	NULL	decimal(12,6)
+1.0000	mysql	user	is_locked	varchar	1	1	latin1	latin1_swedish_ci	varchar(1)

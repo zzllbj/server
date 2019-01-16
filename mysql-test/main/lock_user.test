@@ -1,0 +1,117 @@
+#
+# Test user account locking
+#
+
+--source include/not_embedded.inc
+
+create user user1@localhost;
+create user user2@localhost;
+
+--echo #
+--echo # Only SUPER_ACL privileged users should be able to lock/unlock.
+--echo #
+lock user user1@localhost;
+unlock user user1@localhost;
+
+connect(con1,localhost,user1);
+connection con1;
+--error ER_SPECIFIC_ACCESS_DENIED_ERROR
+lock user user2@localhost;
+disconnect con1;
+connection default;
+
+--echo #
+--echo # LOCK USER USER1 should deny the connection of user1,
+--echo # but it should allow user2 to connect.
+--echo #
+
+lock user user1@localhost;
+--replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
+--error ER_LOCKED_ACCOUNT
+connect(con1,localhost,user1);
+connect(con2,localhost,user2);
+disconnect con2;
+connection default;
+
+--echo #
+--echo # A user shouldn't be able to lock itself out
+--echo #
+
+connect(conr,localhost,root);
+connection conr;
+--error ER_CANNOT_USER
+lock user root@localhost;
+disconnect conr;
+connection default;
+
+--echo #
+--echo # Given 2 users: foo@'local%', foo@'%'
+--echo # A user connected as foo@localhost should be able to successfully lock
+--echo # foo@'%', but not foo@'local%' because it was connected as foo@'local%'
+--echo #
+
+create user foo@'local%';
+create user foo@'%';
+grant SUPER on *.* to foo@'local%';
+connect(confoo,localhost,foo);
+connection confoo;
+lock user foo@'%';
+--error ER_CANNOT_USER
+lock user foo@'local%';
+
+disconnect confoo;
+connection default;
+drop user foo@'local%';
+drop user foo;
+
+--echo #
+--echo # Passing an incorrect user should be invalid
+--echo #
+
+--error ER_PASSWORD_NO_MATCH
+lock user inexistentUser@localhost;
+
+--echo #
+--echo # Passing multiple users should lock them all
+--echo #
+
+lock users user1@localhost, user2@localhost;
+--replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
+--error ER_LOCKED_ACCOUNT
+connect(con1,localhost,user1);
+--replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
+--error ER_LOCKED_ACCOUNT
+connect(con2,localhost,user2);
+unlock users user1@localhost, user2@localhost;
+
+--echo #
+--echo # The locking state is preserved after acl reload
+--echo #
+
+lock user user1@localhost;
+flush privileges;
+--replace_result $MASTER_MYPORT MYSQL_PORT $MASTER_MYSOCK MYSQL_SOCK
+--error ER_LOCKED_ACCOUNT
+connect(con1,localhost,user1);
+
+--echo #
+--echo # JSON functions on global_priv reflect the locking state of an account
+--echo #
+
+lock user user1@localhost;
+select host, user, JSON_VALUE(Priv, '$.is_locked') from mysql.global_priv where user='user1';
+unlock user user1@localhost;
+select host, user, JSON_VALUE(Priv, '$.is_locked') from mysql.global_priv where user='user1';
+
+--echo #
+--echo # SHOW GRANTS correctly displays the account locking state for an user
+--echo #
+
+show grants for user1@localhost;
+lock user user1@localhost;
+show grants for user1@localhost;
+unlock user user1@localhost;
+show grants for user1@localhost;
+
+drop user user1@localhost;
+drop user user2@localhost;

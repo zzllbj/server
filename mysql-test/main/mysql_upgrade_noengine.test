@@ -41,7 +41,7 @@ source include/switch_to_mysql_user.inc;
 drop view mysql.user_bak;
 
 # pretend it's an upgrade from 10.0
-alter table mysql.user drop column default_role, drop column max_statement_time;
+alter table mysql.user drop column default_role, drop column max_statement_time, drop column is_locked;
 
 # but mysql_upgrade_info tells otherwise
 remove_file $datadir/mysql_upgrade_info;
@@ -59,7 +59,7 @@ rename table mysql.global_priv_bak to mysql.global_priv;
 source include/switch_to_mysql_user.inc;
 drop view mysql.user_bak;
 
-alter table mysql.user drop column default_role, drop column max_statement_time;
+alter table mysql.user drop column default_role, drop column max_statement_time, drop column is_locked;
 remove_file $datadir/mysql_upgrade_info;
 
 # upgrade from 10.0 - engines are enabled

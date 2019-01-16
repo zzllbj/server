@@ -684,6 +684,7 @@ static SYMBOL symbols[] = {
   { "USAGE",		SYM(USAGE)},
   { "USE",		SYM(USE_SYM)},
   { "USER",		SYM(USER_SYM)},
+  { "USERS",		SYM(USERS)},
   { "USER_RESOURCES",	SYM(RESOURCES)},
   { "USE_FRM",		SYM(USE_FRM)},
   { "USING",		SYM(USING)},

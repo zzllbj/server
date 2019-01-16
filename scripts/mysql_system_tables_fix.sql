@@ -650,6 +650,11 @@ ALTER TABLE user ADD max_statement_time decimal(12,6) DEFAULT 0 NOT NULL;
 --  we want password_expired column to have collation utf8_general_ci.
 ALTER TABLE user MODIFY password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
 ALTER TABLE user MODIFY is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+ALTER TABLE user ADD is_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL AFTER max_statement_time;
+ALTER TABLE user MODIFY is_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+
+# migrate the locked account status for existing users
+UPDATE user SET is_locked= account_locked where user<>"";
 
 -- Checking for any duplicate hostname and username combination are exists.
 -- If exits we will throw error.
@@ -805,7 +810,8 @@ IF 'BASE TABLE' = (select table_type from information_schema.tables where table_
                     'plugin', if(plugin>'',plugin,if(length(password)=16,'mysql_old_password','mysql_native_password')),
                     'authentication_string', if(plugin>'',authentication_string,password),
                     'default_role', default_role,
-                    'is_role', 'Y'=is_role)) as Priv
+                    'is_role', 'Y'=is_role,
+                    'is_locked', 'Y'=is_locked)) as Priv
   FROM user;
   DROP TABLE user;
 END IF//

@@ -109,6 +109,8 @@ enum enum_sql_command {
   SQLCOM_SHOW_STATUS_PACKAGE_BODY,
   SQLCOM_SHOW_PACKAGE_BODY_CODE,
   SQLCOM_BACKUP, SQLCOM_BACKUP_LOCK,
+  SQLCOM_LOCK_USER,
+  SQLCOM_UNLOCK_USER,
 
   /*
     When a command is added here, be sure it's also added in mysqld.cc

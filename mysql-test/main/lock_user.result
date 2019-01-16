@@ -1,0 +1,102 @@
+create user user1@localhost;
+create user user2@localhost;
+#
+# Only SUPER_ACL privileged users should be able to lock/unlock.
+#
+lock user user1@localhost;
+unlock user user1@localhost;
+connect con1,localhost,user1;
+connection con1;
+lock user user2@localhost;
+ERROR 42000: Access denied; you need (at least one of) the SUPER privilege(s) for this operation
+disconnect con1;
+connection default;
+#
+# LOCK USER USER1 should deny the connection of user1,
+# but it should allow user2 to connect.
+#
+lock user user1@localhost;
+connect(localhost,user1,,test,MYSQL_PORT,MYSQL_SOCK);
+connect con1,localhost,user1;
+ERROR HY000: This account was previously locked using the LOCK USER statement
+connect con2,localhost,user2;
+disconnect con2;
+connection default;
+#
+# A user shouldn't be able to lock itself out
+#
+connect conr,localhost,root;
+connection conr;
+lock user root@localhost;
+ERROR HY000: Operation LOCK USER failed for 'root'@'localhost'
+disconnect conr;
+connection default;
+#
+# Given 2 users: foo@'local%', foo@'%'
+# A user connected as foo@localhost should be able to successfully lock
+# foo@'%', but not foo@'local%' because it was connected as foo@'local%'
+#
+create user foo@'local%';
+create user foo@'%';
+grant SUPER on *.* to foo@'local%';
+connect confoo,localhost,foo;
+connection confoo;
+lock user foo@'%';
+lock user foo@'local%';
+ERROR HY000: Operation LOCK USER failed for 'foo'@'local%'
+disconnect confoo;
+connection default;
+drop user foo@'local%';
+drop user foo;
+#
+# Passing an incorrect user should be invalid
+#
+lock user inexistentUser@localhost;
+ERROR 28000: Can't find any matching row in the user table
+#
+# Passing multiple users should lock them all
+#
+lock users user1@localhost, user2@localhost;
+connect(localhost,user1,,test,MYSQL_PORT,MYSQL_SOCK);
+connect con1,localhost,user1;
+ERROR HY000: This account was previously locked using the LOCK USER statement
+connect(localhost,user2,,test,MYSQL_PORT,MYSQL_SOCK);
+connect con2,localhost,user2;
+ERROR HY000: This account was previously locked using the LOCK USER statement
+unlock users user1@localhost, user2@localhost;
+#
+# The locking state is preserved after acl reload
+#
+lock user user1@localhost;
+flush privileges;
+connect(localhost,user1,,test,MYSQL_PORT,MYSQL_SOCK);
+connect con1,localhost,user1;
+ERROR HY000: This account was previously locked using the LOCK USER statement
+#
+# JSON functions on global_priv reflect the locking state of an account
+#
+lock user user1@localhost;
+select host, user, JSON_VALUE(Priv, '$.is_locked') from mysql.global_priv where user='user1';
+host	user	JSON_VALUE(Priv, '$.is_locked')
+localhost	user1	1
+unlock user user1@localhost;
+select host, user, JSON_VALUE(Priv, '$.is_locked') from mysql.global_priv where user='user1';
+host	user	JSON_VALUE(Priv, '$.is_locked')
+localhost	user1	0
+#
+# SHOW GRANTS correctly displays the account locking state for an user
+#
+show grants for user1@localhost;
+Grants for user1@localhost
+GRANT USAGE ON *.* TO 'user1'@'localhost'
+lock user user1@localhost;
+show grants for user1@localhost;
+Grants for user1@localhost
+GRANT USAGE ON *.* TO 'user1'@'localhost'
+LOCK USER 'user1'@'localhost'
+unlock user user1@localhost;
+show grants for user1@localhost;
+Grants for user1@localhost
+GRANT USAGE ON *.* TO 'user1'@'localhost'
+drop user user1@localhost;
+drop user user2@localhost;

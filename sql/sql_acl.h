@@ -266,6 +266,7 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list, bool handle_as_role);
 bool mysql_drop_user(THD *thd, List <LEX_USER> &list, bool handle_as_role);
 bool mysql_rename_user(THD *thd, List <LEX_USER> &list);
 int mysql_alter_user(THD *thd, List <LEX_USER> &list);
+int mysql_lock_user(THD *thd, List <LEX_USER> &list, bool lock_cmd);
 bool mysql_revoke_all(THD *thd, List <LEX_USER> &list);
 void fill_effective_table_privileges(THD *thd, GRANT_INFO *grant,
                                      const char *db, const char *table);

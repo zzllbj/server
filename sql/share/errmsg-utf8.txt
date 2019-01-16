@@ -7361,6 +7361,9 @@ ER_NO_EIS_FOR_FIELD
 ER_WARN_AGGFUNC_DEPENDENCE
         eng "Aggregate function '%-.192s)' of SELECT #%d belongs to SELECT #%d"
         ukr "Агрегатна функція '%-.192s)' з SELECTу #%d належить до SELECTу #%d"
+ER_LOCKED_ACCOUNT
+        eng "This account was previously locked using the LOCK USER statement"
+        rum "Aces cont a fost blocat anterior folosind comanda LOCK USER"
 
 #
 # Internal errors, not used

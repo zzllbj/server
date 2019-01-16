@@ -145,7 +145,7 @@ Message	Unknown storage engine 'ARCHIVE'
 drop table mysql.global_priv;
 rename table mysql.global_priv_bak to mysql.global_priv;
 drop view mysql.user_bak;
-alter table mysql.user drop column default_role, drop column max_statement_time;
+alter table mysql.user drop column default_role, drop column max_statement_time, drop column is_locked;
 Phase 1/7: Checking and upgrading mysql database
 Processing databases
 mysql
@@ -237,7 +237,7 @@ Message	Unknown storage engine 'ARCHIVE'
 drop table mysql.global_priv;
 rename table mysql.global_priv_bak to mysql.global_priv;
 drop view mysql.user_bak;
-alter table mysql.user drop column default_role, drop column max_statement_time;
+alter table mysql.user drop column default_role, drop column max_statement_time, drop column is_locked;
 Phase 1/7: Checking and upgrading mysql database
 Processing databases
 mysql

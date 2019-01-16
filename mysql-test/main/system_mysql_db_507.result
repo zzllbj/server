@@ -55,6 +55,7 @@ password_expired	enum('N','Y')	NO		N
 is_role	enum('N','Y')	NO		N	
 default_role	char(80)	NO			
 max_statement_time	decimal(12,6)	NO		0.000000	
+is_locked	enum('N','Y')	NO		N	
 #
 # Drop the password column.
 #

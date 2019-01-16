@@ -1051,6 +1051,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 %token  <kwd>  UNKNOWN_SYM                   /* SQL-2003-R */
 %token  <kwd>  UNTIL_SYM
 %token  <kwd>  UPGRADE_SYM
+%token  <kwd>  USERS
 %token  <kwd>  USER_SYM                      /* SQL-2003-R */
 %token  <kwd>  USE_FRM
 %token  <kwd>  VALUE_SYM                     /* SQL-2003-R */
@@ -1536,7 +1537,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
         opt_attribute opt_attribute_list attribute column_list column_list_id
         opt_column_list grant_privileges grant_ident grant_list grant_option
         object_privilege object_privilege_list user_list user_and_role_list
-        rename_list table_or_tables
+        rename_list table_or_tables user_or_users
         clear_privileges flush_options flush_option
         opt_flush_lock flush_lock flush_options_list
         equal optional_braces
@@ -16241,6 +16242,7 @@ keyword_sp_var_and_label:
         | UNDOFILE_SYM
         | UNKNOWN_SYM
         | UNTIL_SYM
+        | USERS
         | USER_SYM           %prec PREC_BELOW_CONTRACTION_TOKEN2
         | USE_FRM
         | VARIABLES
@@ -16741,6 +16743,17 @@ lock:
           }
           table_lock_list opt_lock_wait_timeout
           {}
+          | LOCK_SYM user_or_users
+          {
+            LEX *lex= Lex;
+
+            if (unlikely(lex->sphead))
+              my_yyabort_error((ER_SP_BADSTATEMENT, MYF(0), "LOCK"));
+
+            lex->sql_command= SQLCOM_LOCK_USER;
+          }
+          clear_privileges user_list
+          {}
         ;
 
 opt_lock_wait_timeout:
@@ -16768,6 +16781,11 @@ table_or_tables:
 table_lock_list:
           table_lock
         | table_lock_list ',' table_lock
+        ;
+
+user_or_users:
+          USER_SYM         { }
+        | USERS            { }
         ;
 
 table_lock:
@@ -16808,6 +16826,17 @@ unlock:
             lex->sql_command= SQLCOM_UNLOCK_TABLES;
           }
           table_or_tables
+          {}
+          | UNLOCK_SYM user_or_users
+          {
+            LEX *lex= Lex;
+
+            if (unlikely(lex->sphead))
+              my_yyabort_error((ER_SP_BADSTATEMENT, MYF(0), "UNLOCK"));
+
+            lex->sql_command= SQLCOM_UNLOCK_USER;
+          }
+          clear_privileges user_list
           {}
         ;
 

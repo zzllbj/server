@@ -65,6 +65,7 @@ password_expired	N
 is_role	N
 default_role	
 max_statement_time	0.000000
+is_locked	N
 show grants for mysqltest_1@localhost;
 Grants for mysqltest_1@localhost
 GRANT USAGE ON *.* TO 'mysqltest_1'@'localhost' REQUIRE CIPHER 'EDH-RSA-DES-CBC3-SHA'
@@ -141,6 +142,7 @@ password_expired	N
 is_role	N
 default_role	
 max_statement_time	60.000000
+is_locked	N
 show grants for mysqltest_1@localhost;
 Grants for mysqltest_1@localhost
 GRANT USAGE ON *.* TO 'mysqltest_1'@'localhost' WITH MAX_QUERIES_PER_HOUR 10 MAX_STATEMENT_TIME 60.000000
@@ -193,6 +195,7 @@ password_expired	N
 is_role	N
 default_role	
 max_statement_time	0.000000
+is_locked	N
 show grants for mysqltest_1@localhost;
 Grants for mysqltest_1@localhost
 GRANT USAGE ON *.* TO 'mysqltest_1'@'localhost' WITH MAX_QUERIES_PER_HOUR 10 MAX_UPDATES_PER_HOUR 20 MAX_CONNECTIONS_PER_HOUR 30

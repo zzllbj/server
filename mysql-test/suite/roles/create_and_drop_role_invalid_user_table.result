@@ -3,6 +3,7 @@ use mysql;
 alter table user drop column is_role;
 alter table user drop column default_role;
 alter table user drop column max_statement_time;
+alter table user drop column is_locked;
 flush privileges;
 create role test_role;
 ERROR HY000: Column count of mysql.user is wrong. Expected 45, found 44. Created with MariaDB MYSQL_VERSION_ID, now running MYSQL_VERSION_ID. Please use mysql_upgrade to fix this error
@@ -22,7 +23,11 @@ COLLATE utf8_general_ci
 after is_role;
 alter table user add max_statement_time decimal(12,6) default 0 not null
 after default_role;
+alter table user add column is_locked enum('N', 'Y') default 'N' not null
+COLLATE utf8_general_ci
+after max_statement_time;
 update user set is_role='N';
+update user set is_locked='N';
 flush privileges;
 create role test_role;
 drop role test_role;

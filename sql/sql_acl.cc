@@ -153,6 +153,7 @@ public:
   LEX_CSTRING auth_string;
   LEX_CSTRING default_rolename;
   LEX_CSTRING salt;
+  bool is_locked;
 
   ACL_USER *copy(MEM_ROOT *root)
   {
@@ -258,6 +259,9 @@ static bool show_table_and_column_privileges(THD *, const char *, const char *,
                                              char *, size_t);
 static int show_routine_grants(THD *, const char *, const char *,
                                const Sp_handler *sph, char *, int);
+
+static bool show_account_locked(THD *thd, const char *, const char *, char *,
+                                size_t);
 
 class Grant_tables;
 class User_table;
@@ -853,6 +857,8 @@ class User_table: public Grant_table_base
   virtual int set_is_role (bool x) const = 0;
   virtual const char* get_default_role (MEM_ROOT *root) const = 0;
   virtual int set_default_role (const char *s, size_t l) const = 0;
+  virtual bool get_is_locked () const = 0;
+  virtual int set_is_locked (bool x) const = 0;
 
   virtual ~User_table() {}
  private:
@@ -1099,7 +1105,19 @@ class User_table_tabular: public User_table
       return f->store(s, l, system_charset_info);
     else
       return 1;
-  };
+  }
+  bool get_is_locked () const
+  {
+    Field *f= get_field(end_priv_columns + 14, MYSQL_TYPE_ENUM);
+    return f ? f->val_int()-1 : 0;
+  }
+  int set_is_locked (bool x) const
+  {
+    if (Field *f= get_field(end_priv_columns + 14, MYSQL_TYPE_ENUM))
+      return f->store(x+1, 0);
+    else
+      return 1;
+  }
 
   virtual ~User_table_tabular() {}
  private:
@@ -1278,6 +1296,10 @@ class User_table_json: public User_table
   { return get_str_value(root, STRING_WITH_LEN("default_role")); }
   int set_default_role (const char *s, size_t l) const
   { return set_str_value(STRING_WITH_LEN("default_role"), s, l); }
+  bool get_is_locked () const
+  { return get_bool_value(STRING_WITH_LEN("is_locked")); }
+  int set_is_locked (bool x) const
+  { return set_bool_value(STRING_WITH_LEN("is_locked"), x); }
 
   ~User_table_json() {}
  private:
@@ -2072,6 +2094,8 @@ static bool acl_load(THD *thd, const Grant_tables& tables)
     user.hostname_length= safe_strlen(user.host.hostname);
 
     my_init_dynamic_array(&user.role_grants, sizeof(ACL_ROLE *), 0, 8, MYF(0));
+
+    user.is_locked = user_table.get_is_locked();
 
     if (is_role)
     {
@@ -8705,6 +8729,10 @@ bool mysql_show_grants(THD *thd, LEX_USER *lex_user)
 
     if (show_proxy_grants(thd, username, hostname, buff, sizeof(buff)))
       goto end;
+
+    if (acl_user->is_locked &&
+        show_account_locked(thd, username, hostname, buff, sizeof(buff)))
+      goto end;
   }
 
   if (rolename)
@@ -8738,6 +8766,29 @@ end:
   DBUG_RETURN(error);
 }
 
+
+static bool show_account_locked(THD *thd, const char *username,
+                                const char *hostname, char *buff,
+                                size_t buffsize)
+{
+  Protocol *protocol= thd->protocol;
+  LEX_CSTRING host= {const_cast<char*>(hostname), strlen(hostname)};
+  LEX_CSTRING user= {const_cast<char*>(username), strlen(username)};
+
+  String grant(buff,sizeof(buff),system_charset_info);
+  grant.length(0);
+  grant.append(STRING_WITH_LEN("LOCK USER '"));
+  grant.append(user);
+  grant.append(STRING_WITH_LEN("'@'"));
+  grant.append(host);
+  grant.append(STRING_WITH_LEN("'"));
+
+  protocol->prepare_for_resend();
+  protocol->store(grant.ptr(),grant.length(),grant.charset());
+
+  return protocol->write();
+}
+
 static ROLE_GRANT_PAIR *find_role_grant_pair(const LEX_CSTRING *u,
                                              const LEX_CSTRING *h,
                                              const LEX_CSTRING *r)
@@ -8754,7 +8805,6 @@ static ROLE_GRANT_PAIR *find_role_grant_pair(const LEX_CSTRING *u,
   return (ROLE_GRANT_PAIR *)
     my_hash_search(&acl_roles_mappings, (uchar*)pair_key.ptr(), key_length);
 }
-
 static bool show_role_grants(THD *thd, const char *username,
                              const char *hostname, ACL_USER_BASE *acl_entry,
                              char *buff, size_t buffsize)
@@ -10551,6 +10601,122 @@ int mysql_alter_user(THD* thd, List<LEX_USER> &users_list)
   DBUG_RETURN(result);
 }
 
+/*
+  Mark an user account as locked or unlocked.
+
+  SYNOPSIS
+    mysql_lock_user()
+    thd                         The current thread.
+    list                        The users to lock/unlock.
+    lock_cmd                    true locks an user, false unlocks.
+
+  RETURN
+    > 0         Error. Error message already sent.
+    0           OK.
+*/
+int mysql_lock_user(THD* thd, List<LEX_USER> &users_list, bool lock_cmd)
+{
+  DBUG_ENTER("mysql_lock_user");
+
+  Grant_tables tables;
+  char user_key[MAX_KEY_LENGTH];
+  int result= 0;
+  int error;
+  String wrong_users;
+
+  DBUG_ASSERT(!thd->is_current_stmt_binlog_format_row());
+
+  if ((result= tables.open_and_lock(thd, Table_user, TL_WRITE)))
+    DBUG_RETURN(result != 1);
+
+  const User_table& user_table= tables.user_table();
+  TABLE *table= user_table.table();
+
+  mysql_rwlock_wrlock(&LOCK_grant);
+  mysql_mutex_lock(&acl_cache->lock);
+
+  result= 0;
+  LEX_USER *tmp_lex_user;
+  List_iterator<LEX_USER> users_list_iterator(users_list);
+  while ((tmp_lex_user= users_list_iterator++))
+  {
+    LEX_USER* lex_user= get_current_user(thd, tmp_lex_user, false);
+
+    /*
+       Do not allow the current user to lock itself out.
+    */
+    ACL_USER *current_acl_user= find_user_wild(thd->security_ctx->priv_host,
+                                               thd->security_ctx->priv_user);
+    if (!current_acl_user ||
+        (!strcmp(lex_user->user.str, current_acl_user->user.str) &&
+         !my_strcasecmp(system_charset_info, lex_user->host.str,
+                        current_acl_user->host.hostname)))
+    {
+      result= 1;
+      append_user(thd, &wrong_users, tmp_lex_user);
+      continue;
+    }
+
+    const char *host= lex_user->host.str;
+    const char *username= lex_user->user.str;
+    ACL_USER *acl_user;
+    if (!(acl_user= find_user_exact(host, username)))
+    {
+      result= 1;
+      my_error(ER_PASSWORD_NO_MATCH, MYF(0));
+      append_user(thd, &wrong_users, tmp_lex_user);
+      continue;
+    }
+
+    /*
+       Move to the next user if the current one is already locked/unlocked
+    */
+    if (acl_user->is_locked == lock_cmd)
+      continue;
+
+    acl_user->is_locked= lock_cmd;
+
+    table->use_all_columns();
+    user_table.set_host(host, lex_user->host.length);
+    user_table.set_user(username, lex_user->user.length);
+
+    key_copy((uchar *) user_key, table->record[0], table->key_info,
+             table->key_info->key_length);
+    if (table->file->ha_index_read_idx_map(table->record[0], 0,
+                                           (uchar *) user_key,
+                                           HA_WHOLE_KEY,
+                                           HA_READ_KEY_EXACT))
+    {
+      result= 1;
+      my_error(ER_PASSWORD_NO_MATCH, MYF(0));
+      append_user(thd, &wrong_users, tmp_lex_user);
+      continue;
+    }
+
+    user_table.set_is_locked(lock_cmd);
+    store_record(table, record[1]);
+
+    if (unlikely(error= table->file->ha_update_row(table->record[1],
+                                                   table->record[0])) &&
+        error != HA_ERR_RECORD_IS_THE_SAME)
+    {
+      table->file->print_error(error, MYF(0)); /* purecov: deadcode */
+    }
+  }
+
+  acl_cache->clear(1);
+  mysql_mutex_unlock(&acl_cache->lock);
+
+  if (result)
+    my_error(ER_CANNOT_USER, MYF(0), "LOCK USER", wrong_users.c_ptr_safe());
+
+  if (mysql_bin_log.is_open())
+    result |= write_bin_log(thd, FALSE, thd->query(), thd->query_length());
+
+  mysql_rwlock_unlock(&LOCK_grant);
+
+  DBUG_RETURN(result);
+}
 
 static bool
 mysql_revoke_sp_privs(THD *thd, Grant_tables *tables, const Sp_handler *sph,
@@ -13463,6 +13629,12 @@ bool acl_authenticate(THD *thd, uint com_change_user_pkt_len)
       errors.m_ssl= 1;
       inc_host_errors(mpvio.auth_info.thd->security_ctx->ip, &errors);
       login_failed_error(thd);
+      DBUG_RETURN(1);
+    }
+
+    if (acl_user->is_locked) {
+      status_var_increment(denied_connections);
+      my_error(ER_LOCKED_ACCOUNT, MYF(0));
       DBUG_RETURN(1);
     }
 
