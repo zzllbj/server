@@ -322,7 +322,6 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
 */
 %token  ABORT_SYM                     /* INTERNAL (used in lex) */
 %token  ACCESSIBLE_SYM
-%token  ACCOUNT_SYM
 %token  ADD                           /* SQL-2003-R */
 %token  ALL                           /* SQL-2003-R */
 %token  ALTER                         /* SQL-2003-R */
@@ -646,6 +645,7 @@ bool my_yyoverflow(short **a, YYSTYPE **b, size_t *yystacksize);
   Non-reserved keywords
 */
 
+%token  <kwd>  ACCOUNT_SYM
 %token  <kwd>  ACTION                        /* SQL-2003-N */
 %token  <kwd>  ADMIN_SYM                     /* SQL-2003-N */
 %token  <kwd>  ADDDATE_SYM                   /* MYSQL-FUNC */
