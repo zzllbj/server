@@ -268,7 +268,7 @@ class User_table;
 class Proxies_priv_table;
 
 static int lock_user_account(THD* thd, const User_table &user_table,
-                             LEX_USER *lex_user, bool lock_cmd);
+                             LEX_USER *lex_user, ACL_USER *acl_user);
 
 class ACL_PROXY_USER :public ACL_ACCESS
 {
@@ -2120,7 +2120,7 @@ static bool acl_load(THD *thd, const Grant_tables& tables)
 
     my_init_dynamic_array(&user.role_grants, sizeof(ACL_ROLE *), 0, 8, MYF(0));
 
-    user.account_locked = user_table.get_account_locked();
+    user.account_locked= user_table.get_account_locked();
 
     if (is_role)
     {
@@ -4167,6 +4167,9 @@ static int replace_user_table(THD *thd, const User_table &user_table,
     mqh_used= (mqh_used || lex->mqh.questions || lex->mqh.updates ||
                lex->mqh.conn_per_hour || lex->mqh.user_conn ||
                lex->mqh.max_statement_time != 0.0);
+
+    if ((error= lock_user_account(thd, user_table, combo, &new_acl_user)))
+      goto end;
   }
 
   if (old_row_exists)
@@ -10210,8 +10213,6 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list, bool handle_as_role)
   bool binlog= false;
   DBUG_ENTER("mysql_create_user");
   DBUG_PRINT("entry", ("Handle as %s", handle_as_role ? "role" : "user"));
-  bool update_account_locking= thd->lex->account_options.update_account_locking;
-  bool account_locked_value= thd->lex->account_options.account_locked_value;
 
   if (handle_as_role && sp_process_definer(thd))
     DBUG_RETURN(TRUE);
@@ -10295,10 +10296,7 @@ bool mysql_create_user(THD *thd, List <LEX_USER> &list, bool handle_as_role)
       }
     }
 
-    if (replace_user_table(thd, tables.user_table(), user_name, 0, 0, 1, 0) ||
-        (update_account_locking &&
-         lock_user_account(thd, tables.user_table(), user_name,
-                           account_locked_value)))
+    if (replace_user_table(thd, tables.user_table(), user_name, 0, 0, 1, 0))
     {
       append_user(thd, &wrong_users, user_name);
       result= TRUE;
@@ -10577,8 +10575,6 @@ int mysql_alter_user(THD* thd, List<LEX_USER> &users_list)
   int result= 0;
   String wrong_users;
   bool some_users_altered= false;
-  bool update_account_locking= thd->lex->account_options.update_account_locking;
-  bool account_locked_value= thd->lex->account_options.account_locked_value;
 
   /* The only table we're altering is the user table. */
   Grant_tables tables;
@@ -10595,10 +10591,7 @@ int mysql_alter_user(THD* thd, List<LEX_USER> &users_list)
   {
     LEX_USER* lex_user= get_current_user(thd, tmp_lex_user, false);
     if (!lex_user || replace_user_table(thd, tables.user_table(), lex_user, 0,
-                                        false, false, true) ||
-        (update_account_locking &&
-         lock_user_account(thd, tables.user_table(), lex_user,
-                           account_locked_value)))
+                                        false, false, true))
     {
       thd->clear_error();
       append_user(thd, &wrong_users, tmp_lex_user);
@@ -10645,23 +10638,24 @@ int mysql_alter_user(THD* thd, List<LEX_USER> &users_list)
     thd                         The current thread.
     user_table                  A TL_WRITE opened User_table
     lex_user                    The user to lock/unlock.
-    lock_cmd                    true locks an user, false unlocks.
+    acl_user                    The acl user to be updated
 
   RETURN
     > 0         Error. Error message already sent.
     0           OK.
 */
 static int lock_user_account(THD* thd, const User_table &user_table,
-                             LEX_USER *lex_user, bool lock_cmd)
+                             LEX_USER *lex_user, ACL_USER *acl_user)
 {
-  char user_key[MAX_KEY_LENGTH];
-  int error;
+  bool update_account_locking= thd->lex->account_options.update_account_locking;
+  bool account_locked_value= thd->lex->account_options.account_locked_value;
 
   DBUG_ENTER("lock_user_account");
 
-  mysql_mutex_assert_owner(&acl_cache->lock);
+  if (!update_account_locking)
+    DBUG_RETURN(0);
 
-  TABLE *table= user_table.table();
+  mysql_mutex_assert_owner(&acl_cache->lock);
 
   /*
      Do not allow the current user to lock itself out.
@@ -10676,49 +10670,9 @@ static int lock_user_account(THD* thd, const User_table &user_table,
     DBUG_RETURN(1);
   }
 
-  const char *host= lex_user->host.str;
-  const char *username= lex_user->user.str;
-  ACL_USER *acl_user;
-  if (!(acl_user= find_user_exact(host, username)))
-  {
-    my_error(ER_PASSWORD_NO_MATCH, MYF(0));
-    DBUG_RETURN(1);
-  }
+  acl_user->account_locked= account_locked_value;
 
-  /*
-     Move to the next user if the current one is already locked/unlocked
-  */
-  if (acl_user->account_locked == lock_cmd)
-    DBUG_RETURN(0);
-
-  acl_user->account_locked= lock_cmd;
-
-  table->use_all_columns();
-  user_table.set_host(host, lex_user->host.length);
-  user_table.set_user(username, lex_user->user.length);
-
-  key_copy((uchar *) user_key, table->record[0], table->key_info,
-           table->key_info->key_length);
-  if (table->file->ha_index_read_idx_map(table->record[0], 0,
-                                         (uchar *) user_key,
-                                         HA_WHOLE_KEY,
-                                         HA_READ_KEY_EXACT))
-  {
-    my_error(ER_PASSWORD_NO_MATCH, MYF(0));
-    DBUG_RETURN(1);
-  }
-
-  user_table.set_account_locked(lock_cmd);
-  store_record(table, record[1]);
-
-  if (unlikely(error= table->file->ha_update_row(table->record[1],
-                                                 table->record[0])) &&
-      error != HA_ERR_RECORD_IS_THE_SAME)
-  {
-    table->file->print_error(error, MYF(0)); /* purecov: deadcode */
-  }
-
-  acl_cache->clear(1);
+  user_table.set_account_locked(account_locked_value);
 
   DBUG_RETURN(0);
 }

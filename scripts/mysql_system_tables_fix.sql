@@ -643,9 +643,9 @@ ALTER TABLE user ADD plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL,
 ALTER TABLE user MODIFY plugin char(64) CHARACTER SET latin1 DEFAULT '' NOT NULL,
                  MODIFY authentication_string TEXT NOT NULL;
 ALTER TABLE user ADD password_expired ENUM('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
-ALTER TABLE user ADD password_last_changed datetime NULL;
-ALTER TABLE user ADD password_lifetime int(20) unsigned NULL;
-ALTER TABLE user ADD account_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
+ALTER TABLE user ADD password_last_changed datetime NULL after password_expired;
+ALTER TABLE user ADD password_lifetime int(20) unsigned NULL after password_last_changed;
+ALTER TABLE user ADD account_locked enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL after password_lifetime;
 ALTER TABLE user ADD is_role enum('N', 'Y') COLLATE utf8_general_ci DEFAULT 'N' NOT NULL;
 ALTER TABLE user ADD default_role char(80) binary DEFAULT '' NOT NULL;
 ALTER TABLE user ADD max_statement_time decimal(12,6) DEFAULT 0 NOT NULL;

@@ -20,7 +20,7 @@ connection default;
 alter user user1@localhost account lock;
 connect(localhost,user1,,test,MYSQL_PORT,MYSQL_SOCK);
 connect con1,localhost,user1;
-ERROR HY000: This account was previously locked using the LOCK USER statement
+ERROR HY000: Access denied, this account is locked
 connect con2,localhost,user2;
 disconnect con2;
 connection default;
@@ -82,10 +82,10 @@ GRANT USAGE ON *.* TO 'user1'@'localhost'
 alter user user1@localhost, user2@localhost account lock;
 connect(localhost,user1,,test,MYSQL_PORT,MYSQL_SOCK);
 connect con1,localhost,user1;
-ERROR HY000: This account was previously locked using the LOCK USER statement
+ERROR HY000: Access denied, this account is locked
 connect(localhost,user2,,test,MYSQL_PORT,MYSQL_SOCK);
 connect con2,localhost,user2;
-ERROR HY000: This account was previously locked using the LOCK USER statement
+ERROR HY000: Access denied, this account is locked
 alter user user1@localhost, user2@localhost account unlock;
 #
 # The locking state is preserved after acl reload
@@ -94,7 +94,7 @@ alter user user1@localhost account lock;
 flush privileges;
 connect(localhost,user1,,test,MYSQL_PORT,MYSQL_SOCK);
 connect con1,localhost,user1;
-ERROR HY000: This account was previously locked using the LOCK USER statement
+ERROR HY000: Access denied, this account is locked
 alter user user1@localhost account unlock;
 #
 # JSON functions on global_priv reflect the locking state of an account
