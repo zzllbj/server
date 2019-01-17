@@ -2520,6 +2520,7 @@ int SQL_SELECT::test_quick_select(THD *thd, key_map keys_to_use,
   quick=0;
   needed_reg.clear_all();
   quick_keys.clear_all();
+  head->with_impossible_ranges.clear_all();
   DBUG_ASSERT(!head->is_filled_at_execution());
   if (keys_to_use.is_clear_all() || head->is_filled_at_execution())
     DBUG_RETURN(0);
@@ -8556,6 +8557,7 @@ int and_range_trees(RANGE_OPT_PARAM *param, SEL_TREE *tree1, SEL_TREE *tree2,
       if (key && key->type == SEL_ARG::IMPOSSIBLE)
       {
 	result->type= SEL_TREE::IMPOSSIBLE;
+        param->table->with_impossible_ranges.set_bit(param->real_keynr[key_no]);
         DBUG_RETURN(1);
       }
       result_keys.set_bit(key_no);

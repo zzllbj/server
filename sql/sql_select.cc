@@ -1490,6 +1490,7 @@ bool JOIN::make_range_filters()
       key_map filter_map;
       filter_map.clear_all();
       filter_map.set_bit(tab->filter->key_no);
+      filter_map.merge(tab->table->with_impossible_ranges);
       bool force_index_save= tab->table->force_index;
       tab->table->force_index= true;
       (void) sel->test_quick_select(thd, filter_map, (table_map) 0,
@@ -5118,9 +5119,8 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
         select->quick=0;
         impossible_range= records == 0 && s->table->reginfo.impossible_range;
         if (join->thd->lex->sql_command == SQLCOM_SELECT &&
-            join->table_count > 1 &&
             optimizer_flag(join->thd, OPTIMIZER_SWITCH_USE_ROWID_FILTER))
-          s->table->select_usable_range_filters(join->thd);
+          s->table->init_cost_info_for_usable_range_filters(join->thd);
       }
       if (!impossible_range)
       {
@@ -7328,11 +7328,14 @@ best_access_path(JOIN      *join,
 
       if (records < DBL_MAX)
       {
-        filter= table->best_filter_for_current_join_order(start_key->key,
-                                                        records,
-                                                        record_count);
-        if (filter && (filter->get_filter_gain(record_count*records) < tmp))
-          tmp= tmp - filter->get_filter_gain(record_count*records);
+        double rows= record_count * records;
+        filter= table->best_filter_for_partial_join(start_key->key, rows);
+        if (filter)
+	{
+          tmp-= filter->get_adjusted_gain(rows, s->worst_seeks) -
+	        filter->get_cmp_gain(rows);
+          DBUG_ASSERT(tmp >= 0);
+        }
       }
 
       if (tmp + 0.0001 < best_time - records/(double) TIME_FOR_COMPARE)
@@ -7438,6 +7441,7 @@ best_access_path(JOIN      *join,
       Here we estimate its cost.
     */
 
+    filter= 0;
     if (s->quick)
     {
       /*
@@ -7452,6 +7456,18 @@ best_access_path(JOIN      *join,
       tmp= record_count *
         (s->quick->read_time +
          (s->found_records - rnd_records)/(double) TIME_FOR_COMPARE);
+
+      if ( s->quick->get_type() == QUICK_SELECT_I::QS_TYPE_RANGE)
+      {
+        double rows= record_count * s->found_records;
+        uint key_no= s->quick->index;
+        filter= s->table->best_filter_for_partial_join(key_no, rows);
+        if (filter)
+        {
+          tmp-= filter->get_gain(rows);
+          DBUG_ASSERT(tmp >= 0);
+	}
+      }
 
       loose_scan_opt.check_range_access(join, idx, s->quick);
     }
@@ -7498,24 +7514,23 @@ best_access_path(JOIN      *join,
     else
       tmp+= s->startup_cost;
 
-    if (s->quick && s->quick->get_type() == QUICK_SELECT_I::QS_TYPE_RANGE)
-    {
-      filter= s->table->best_filter_for_current_join_order(s->quick->index,
-                                                           rnd_records,
-                                                           record_count);
-      if (filter && (filter->get_filter_gain(record_count*rnd_records) < tmp))
-        tmp= tmp - filter->get_filter_gain(record_count*rnd_records);
-    }
-
     /*
       We estimate the cost of evaluating WHERE clause for found records
       as record_count * rnd_records / TIME_FOR_COMPARE. This cost plus
       tmp give us total cost of using TABLE SCAN
     */
+
+    double filter_cmp_gain= 0;
+    if (filter)
+    {
+      filter_cmp_gain= filter->get_cmp_gain(record_count * s->found_records);
+    }
+
     if (best == DBL_MAX ||
         (tmp  + record_count/(double) TIME_FOR_COMPARE*rnd_records <
          (best_key->is_for_hash_join() ? best_time :
-          best + record_count/(double) TIME_FOR_COMPARE*records)))
+          best + record_count/(double) TIME_FOR_COMPARE*records -
+          filter_cmp_gain)))
     {
       /*
         If the table has a range (s->quick is set) make_join_select()
@@ -12708,9 +12723,7 @@ ha_rows JOIN_TAB::get_examined_rows()
   double examined_rows;
   SQL_SELECT *sel= filesort? filesort->select : this->select;
 
-  if (filter)
-    examined_rows= records_read;
-  else if (sel && sel->quick && use_quick != 2)
+  if (sel && sel->quick && use_quick != 2)
     examined_rows= (double)sel->quick->records;
   else if (type == JT_NEXT || type == JT_ALL ||
            type == JT_HASH || type ==JT_HASH_NEXT)
@@ -22477,6 +22490,12 @@ check_reverse_order:
         tab->use_quick=1;
         tab->ref.key= -1;
         tab->ref.key_parts=0;		// Don't use ref key.
+        tab->filter= 0;
+        if (tab->rowid_filter)
+	{
+          delete tab->rowid_filter;
+          tab->rowid_filter= 0;
+        }
         tab->read_first_record= join_init_read_record;
         if (tab->is_using_loose_index_scan())
           tab->join->tmp_table_param.precomputed_group_by= TRUE;

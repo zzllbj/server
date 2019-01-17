@@ -129,48 +129,51 @@ typedef enum
 class Range_filter_cost_info : public Sql_alloc
 {
 public:
+  Rowid_filter_container_type container_type;
   TABLE *table;
   uint key_no;
   double est_elements;
   double b;                         // intercept of the linear function
   double a;                         // slope of the linear function
   double selectivity;
-  double intersect_x_axis_abcissa;
+  double cross_x;
+  key_map abs_independent;
 
   /**
     Filter cost functions
   */
-  /* Cost to lookup into filter */
-  inline double lookup_cost()
-  {
-    return log(est_elements)*0.01;
-  }
 
   Range_filter_cost_info() : table(0), key_no(0) {}
 
-  void init(TABLE *tab, uint key_numb);
+  void init(Rowid_filter_container_type cont_type,
+            TABLE *tab, uint key_numb);
 
   double build_cost(Rowid_filter_container_type container_type);
 
-  inline double get_intersect_x(Range_filter_cost_info *filter)
-  {
-    if (a == filter->a)
-      return DBL_MAX;
-    return (b - filter->b)/(a - filter->a);
-  }
-  inline double get_intersect_y(double intersect_x)
-  {
-    if (intersect_x == DBL_MAX)
-      return DBL_MAX;
-    return intersect_x*a - b;
-  }
+  inline double lookup_cost(Rowid_filter_container_type cont_type);
+
+  inline double
+  avg_access_and_eval_gain_per_row(Rowid_filter_container_type cont_type);
 
   /**
-    Get a gain that a usage of filter in some partial join order
-    with the cardinaly card gives
+    Get the gain that usage of filter promises for 'rows' key entries
   */
-  inline double get_filter_gain(double card)
-  {  return card*a - b;  }
+  inline double get_gain(double rows)
+  {
+    return rows * a - b;
+  }
+
+  inline double get_adjusted_gain(double rows, double worst_seeks)
+  {
+    return get_gain(rows) -
+           (1 - selectivity) * (rows - MY_MIN(rows, worst_seeks));
+  }
+
+  inline double get_cmp_gain(double rows)
+  {
+    return rows * (1 - selectivity) / TIME_FOR_COMPARE;
+  }
+
 };
 
 

@@ -44,6 +44,7 @@ SELECT COUNT(*) FROM CountryLanguage;
 COUNT(*)
 984
 CREATE INDEX Name ON City(Name);
+SET SESSION optimizer_switch='rowid_filter=off';
 SET SESSION optimizer_switch='index_merge_sort_intersection=on';
 SELECT COUNT(*) FROM City;
 COUNT(*)
@@ -978,6 +979,7 @@ f1	f4	f5
 998	a	0
 DROP TABLE t1;
 SET SESSION optimizer_switch='index_merge_sort_intersection=on';
+SET SESSION optimizer_switch='rowid_filter=default';
 set global innodb_stats_persistent= @innodb_stats_persistent_save;
 set global innodb_stats_persistent_sample_pages=
 @innodb_stats_persistent_sample_pages_save;

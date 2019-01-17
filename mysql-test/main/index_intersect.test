@@ -33,6 +33,7 @@ ANALYZE TABLE City;
 --enable_result_log
 --enable_query_log
 
+SET SESSION optimizer_switch='rowid_filter=off';
 SET SESSION optimizer_switch='index_merge_sort_intersection=on';
 
 SELECT COUNT(*) FROM City;
@@ -460,3 +461,4 @@ WHERE (f1 < 535  OR  f1 > 985) AND ( f4='r' OR f4 LIKE 'a%' ) ;
 DROP TABLE t1;
 
 SET SESSION optimizer_switch='index_merge_sort_intersection=on';
+SET SESSION optimizer_switch='rowid_filter=default';

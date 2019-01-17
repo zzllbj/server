@@ -5,6 +5,27 @@
 #include "rowid_filter.h"
 #include "sql_select.h"
 
+inline
+double Range_filter_cost_info::lookup_cost(
+                               Rowid_filter_container_type cont_type)
+{
+  switch (cont_type) {
+  case ORDERED_ARRAY_CONTAINER:
+    return log(est_elements)*0.01;
+  default:
+    DBUG_ASSERT(0);
+    return 0;
+  }
+}
+
+
+inline
+double Range_filter_cost_info::avg_access_and_eval_gain_per_row(
+                        Rowid_filter_container_type cont_type)
+{
+  return (1+1.0/TIME_FOR_COMPARE) * (1 - selectivity) -
+         lookup_cost(cont_type);
+}
 
 /**
   Sets information about filter with key_numb index.
@@ -12,15 +33,19 @@
   and gets slope and interscept values.
 */
 
-void Range_filter_cost_info::init(TABLE *tab, uint key_numb)
+void Range_filter_cost_info::init(Rowid_filter_container_type cont_type,
+                                  TABLE *tab, uint idx)
 {
+  container_type= cont_type;
   table= tab;
-  key_no= key_numb;
+  key_no= idx;
   est_elements= table->quick_rows[key_no];
-  b= build_cost(ORDERED_ARRAY_CONTAINER);
+  b= build_cost(container_type);
   selectivity= est_elements/((double) table->stat_records());
-  a= (1 + COST_COND_EVAL)*(1 - selectivity) - lookup_cost();
-  intersect_x_axis_abcissa= b/a;
+  a= avg_access_and_eval_gain_per_row(container_type);
+  if (a > 0)
+    cross_x= b/a;
+  abs_independent.clear_all();
 }
 
 double
@@ -43,128 +68,99 @@ Range_filter_cost_info::build_cost(Rowid_filter_container_type container_type)
   return cost;
 }
 
-/**
-  @brief
-    Sort available filters by their building cost in the increasing order
 
-  @details
-    The method starts sorting available filters from the first filter that
-    is not defined as the best filter. If there are two filters that are
-    defined as the best filters there is no need to sort other filters.
-    Best filters are already sorted by their building cost and have the
-    smallest bulding cost in comparison with other filters by definition.
-
-    As the sorting method bubble sort is used.
-*/
-
-void TABLE::sort_range_filter_cost_info_array()
+static
+int compare_range_filter_cost_info_by_a(Range_filter_cost_info **filter_ptr_1,
+                                        Range_filter_cost_info **filter_ptr_2)
 {
-  if (best_filter_count  <= 2)
-    return;
-
-  for (uint i= best_filter_count; i < range_filter_cost_info_elements-1; i++)
-  {
-    for (uint j= i+1; j < range_filter_cost_info_elements; j++)
-    {
-      if (range_filter_cost_info[i].intersect_x_axis_abcissa >
-          range_filter_cost_info[j].intersect_x_axis_abcissa)
-        swap_variables(Range_filter_cost_info,
-                       range_filter_cost_info[i],
-                       range_filter_cost_info[j]);
-    }
-  }
+  double diff= (*filter_ptr_2)->a - (*filter_ptr_1)->a;
+  return (diff < 0 ? -1 : (diff > 0 ? 1 : 0));
 }
 
-
 /**
   @brief
-    The method searches for the filters that can reduce the join cost the most
 
   @details
-    The method looks through the available filters trying to choose the best
-    filter and eliminate as many filters as possible.
-
-    Filters are considered as a linear functions. The best filter is the linear
-    function that intersects all other linear functions not in the I quadrant
-    and has the biggest a (slope) value. This filter will reduce the partial
-    join cost the most. If it is possible the second best filter is also
-    chosen. The second best filter can be used if the ref access is made on
-    the index of the first best filter.
-
-    So there is no need to store all other filters except filters that
-    intersect in the I quadrant. It is impossible to say on this step which
-    filter is better and will give the biggest gain.
-
-    The number of filters that can be used is stored in the
-    range_filter_cost_info_elements variable.
 */
 
 void TABLE::prune_range_filters()
 {
-  key_map pruned_filter_map;
-  pruned_filter_map.clear_all();
-  Range_filter_cost_info *max_slope_filters[2] = {0, 0};
+  uint i, j;
 
-  for (uint i= 0; i < range_filter_cost_info_elements; i++)
+  Range_filter_cost_info **filter_ptr_1= range_filter_cost_info_ptr;
+  for (i= 0; i < range_filter_cost_info_elems; i++, filter_ptr_1++)
   {
-    Range_filter_cost_info *filter= &range_filter_cost_info[i];
-    if (filter->a < 0)
+    uint key_no= (*filter_ptr_1)->key_no;
+    Range_filter_cost_info **filter_ptr_2= filter_ptr_1 + 1;
+    for (j= i+1; j < range_filter_cost_info_elems; j++, filter_ptr_2++)
     {
-      range_filter_cost_info_elements--;
-      swap_variables(Range_filter_cost_info, range_filter_cost_info[i],
-                     range_filter_cost_info[range_filter_cost_info_elements]);
-      i--;
-      continue;
-    }
-    for (uint j= i+1; j < range_filter_cost_info_elements; j++)
-    {
-      Range_filter_cost_info *cand_filter= &range_filter_cost_info[j];
-
-      double intersect_x= filter->get_intersect_x(cand_filter);
-      double intersect_y= filter->get_intersect_y(intersect_x);
-
-      if (intersect_x > 0 && intersect_y > 0)
+      key_map map= key_info[key_no].overlapped;
+      map.intersect(key_info[(*filter_ptr_2)->key_no].overlapped);
+      if (map.is_clear_all())
       {
-        pruned_filter_map.set_bit(cand_filter->key_no);
-        pruned_filter_map.set_bit(filter->key_no);
+        (*filter_ptr_1)->abs_independent.set_bit((*filter_ptr_2)->key_no);
+        (*filter_ptr_2)->abs_independent.set_bit(key_no);
       }
     }
-    if (!pruned_filter_map.is_set(filter->key_no))
+  }
+
+  /* Sort the array range_filter_cost_info by 'a' */
+  my_qsort(range_filter_cost_info_ptr,
+           range_filter_cost_info_elems,
+           sizeof(Range_filter_cost_info *),
+           (qsort_cmp) compare_range_filter_cost_info_by_a);
+
+  Range_filter_cost_info **cand_filter_ptr= range_filter_cost_info_ptr;
+  for (i= 0; i < range_filter_cost_info_elems; i++, cand_filter_ptr++)
+  {
+    bool is_pruned= false;
+    Range_filter_cost_info **usable_filter_ptr= range_filter_cost_info_ptr;
+    key_map abs_indep;
+    abs_indep.clear_all();
+    for (uint j= 0; j < i; j++, usable_filter_ptr++)
     {
-      if (!max_slope_filters[0])
-        max_slope_filters[0]= filter;
+      if ((*cand_filter_ptr)->cross_x >= (*usable_filter_ptr)->cross_x)
+      {
+        if (abs_indep.is_set((*usable_filter_ptr)->key_no))
+	{
+	  is_pruned= true;
+          break;
+        }
+        abs_indep.merge((*usable_filter_ptr)->abs_independent);
+      }
       else
       {
-        if (!max_slope_filters[1] ||
-            max_slope_filters[1]->a < filter->a)
-          max_slope_filters[1]= filter;
-        if (max_slope_filters[0]->a < max_slope_filters[1]->a)
-          swap_variables(Range_filter_cost_info*, max_slope_filters[0],
-                                                  max_slope_filters[1]);
+        Range_filter_cost_info *moved= *cand_filter_ptr;
+        memmove(usable_filter_ptr+1, usable_filter_ptr,
+                sizeof(Range_filter_cost_info *) * (i-j-1));
+        *usable_filter_ptr= moved;
       }
     }
-  }
-
-  for (uint i= 0; i<2; i++)
-  {
-    if (max_slope_filters[i])
+    if (is_pruned)
     {
-      swap_variables(Range_filter_cost_info,
-                     range_filter_cost_info[i],
-                     *max_slope_filters[i]);
-      if (i == 0 &&
-          max_slope_filters[1] == &range_filter_cost_info[0])
-        max_slope_filters[1]= max_slope_filters[0];
-
-      best_filter_count++;
-      max_slope_filters[i]= &range_filter_cost_info[i];
+      memmove(cand_filter_ptr, cand_filter_ptr+1,
+              sizeof(Range_filter_cost_info *) *
+              (range_filter_cost_info_elems - 1 - i));
+      range_filter_cost_info_elems--;
     }
   }
-  sort_range_filter_cost_info_array();
 }
 
 
-void TABLE::select_usable_range_filters(THD *thd)
+static uint
+get_max_range_filter_elements_for_table(THD *thd, TABLE *tab,
+                                        Rowid_filter_container_type cont_type)
+{
+  switch (cont_type) {
+  case ORDERED_ARRAY_CONTAINER :
+    return thd->variables.max_rowid_filter_size/tab->file->ref_length;
+  default :
+    DBUG_ASSERT(0);
+    return 0;
+  }
+}
+
+void TABLE::init_cost_info_for_usable_range_filters(THD *thd)
 {
   uint key_no;
   key_map usable_range_filter_keys;
@@ -172,73 +168,74 @@ void TABLE::select_usable_range_filters(THD *thd)
   key_map::Iterator it(quick_keys);
   while ((key_no= it++) != key_map::Iterator::BITMAP_END)
   {
-    if (quick_rows[key_no] >
-        thd->variables.max_rowid_filter_size/file->ref_length)
+    if (!(file->index_flags(key_no, 0, 1) & HA_DO_RANGE_FILTER_PUSHDOWN))
+      continue;
+    if (key_no == s->primary_key && file->primary_key_is_clustered())
+      continue;
+   if (quick_rows[key_no] >
+       get_max_range_filter_elements_for_table(thd, this,
+                                               ORDERED_ARRAY_CONTAINER))
       continue;
     usable_range_filter_keys.set_bit(key_no);
   }
 
-  if (usable_range_filter_keys.is_clear_all())
+  range_filter_cost_info_elems= usable_range_filter_keys.bits_set();
+  if (!range_filter_cost_info_elems)
     return;
 
-  range_filter_cost_info_elements= usable_range_filter_keys.bits_set();
+  range_filter_cost_info_ptr=
+    (Range_filter_cost_info **) thd->calloc(sizeof(Range_filter_cost_info *) *
+                                            range_filter_cost_info_elems);
   range_filter_cost_info=
-    new (thd->mem_root) Range_filter_cost_info [range_filter_cost_info_elements];
+    new (thd->mem_root) Range_filter_cost_info[range_filter_cost_info_elems];
+  if (!range_filter_cost_info_ptr || !range_filter_cost_info)
+  {
+    range_filter_cost_info_elems= 0;
+    return;
+  }
+
+  Range_filter_cost_info **curr_ptr= range_filter_cost_info_ptr;
   Range_filter_cost_info *curr_filter_cost_info= range_filter_cost_info;
 
   key_map::Iterator li(usable_range_filter_keys);
   while ((key_no= li++) != key_map::Iterator::BITMAP_END)
   {
-    curr_filter_cost_info->init(this, key_no);
+    *curr_ptr= curr_filter_cost_info;
+    curr_filter_cost_info->init(ORDERED_ARRAY_CONTAINER, this, key_no);
+    curr_ptr++;
     curr_filter_cost_info++;
   }
   prune_range_filters();
 }
 
 
-Range_filter_cost_info
-*TABLE::best_filter_for_current_join_order(uint ref_key_no,
-                                           double record_count,
-                                           double records)
+Range_filter_cost_info *TABLE::best_filter_for_partial_join(uint access_key_no,
+                                                            double records)
 {
-  if (!this || range_filter_cost_info_elements == 0)
+  if (!this || range_filter_cost_info_elems == 0 ||
+      covering_keys.is_set(access_key_no))
     return 0;
 
-  double card= record_count*records;
-  Range_filter_cost_info *best_filter= &range_filter_cost_info[0];
-
-  if (card < best_filter->intersect_x_axis_abcissa)
+  if (access_key_no == s->primary_key && file->primary_key_is_clustered())
     return 0;
-  if (best_filter_count != 0)
-  {
-    if (best_filter->key_no == ref_key_no)
-    {
-      if (best_filter_count == 2)
-      {
-        best_filter= &range_filter_cost_info[1];
-        if (card < best_filter->intersect_x_axis_abcissa)
-          return 0;
-        return best_filter;
-      }
-    }
-    else
-      return best_filter;
-  }
 
-  double best_filter_improvement= 0.0;
-  best_filter= 0;
+  Range_filter_cost_info *best_filter= 0;
+  double best_filter_gain= 0;
 
-  key_map *intersected_with= &key_info->intersected_with;
-  for (uint i= best_filter_count; i < range_filter_cost_info_elements; i++)
+  key_map *overlapped= &key_info[access_key_no].overlapped;
+  for (uint i= 0; i < range_filter_cost_info_elems ;  i++)
   {
-    Range_filter_cost_info *filter= &range_filter_cost_info[i];
-    if ((filter->key_no == ref_key_no) || intersected_with->is_set(filter->key_no))
+    double curr_gain = 0;
+    Range_filter_cost_info *filter= range_filter_cost_info_ptr[i];
+    if ((filter->key_no == access_key_no) ||
+        overlapped->is_set(filter->key_no))
       continue;
-    if (card < filter->intersect_x_axis_abcissa)
+    if (records < filter->cross_x)
       break;
-    if (best_filter_improvement < filter->get_filter_gain(card))
+    curr_gain= filter->get_gain(records);
+    if (best_filter_gain < curr_gain)
     {
-      best_filter_improvement= filter->get_filter_gain(card);
+      best_filter_gain= curr_gain;
       best_filter= filter;
     }
   }

@@ -1,4 +1,5 @@
 set @optimizer_switch_save= @@optimizer_switch;
+set optimizer_switch='rowid_filter=off';
 set optimizer_switch='index_merge_sort_intersection=off';
 #---------------- Index merge test 1 -------------------------------------------
 SET SESSION STORAGE_ENGINE = MyISAM;
@@ -1520,12 +1521,12 @@ explain select * from t1 where a=1 or b=1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	2	Using union(a,b); Using where
 This should use ALL:
-set optimizer_switch='default,index_merge=off';
+set optimizer_switch='default,index_merge=off,rowid_filter=off';
 explain select * from t1 where a=1 or b=1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	a,b	NULL	NULL	NULL	1000	Using where
 This should use sort-union:
-set optimizer_switch='default,index_merge_union=off';
+set optimizer_switch='default,index_merge_union=off,rowid_filter=off';
 explain select * from t1 where a=1 or b=1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	2	Using sort_union(a,b); Using where
@@ -1535,17 +1536,17 @@ explain select * from t1 where a<1 or b <1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	38	Using sort_union(a,b); Using where
 This should use ALL:
-set optimizer_switch='default,index_merge_sort_union=off';
+set optimizer_switch='default,index_merge_sort_union=off,rowid_filter=off';
 explain select * from t1 where a<1 or b <1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	a,b	NULL	NULL	NULL	1000	Using where
 This should use ALL:
-set optimizer_switch='default,index_merge=off';
+set optimizer_switch='default,index_merge=off,rowid_filter=off';
 explain select * from t1 where a<1 or b <1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	a,b	NULL	NULL	NULL	1000	Using where
 This will use sort-union:
-set optimizer_switch='default,index_merge_union=off';
+set optimizer_switch='default,index_merge_union=off,rowid_filter=off';
 explain select * from t1 where a<1 or b <1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	38	Using sort_union(a,b); Using where
@@ -1557,7 +1558,7 @@ explain select * from t1 where (a=3 or b in (1,2)) and (c=3 or d=4);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b,c,d	a,b	5,5	NULL	3	Using sort_union(a,b); Using where
 And if we disable sort_union, union:
-set optimizer_switch='default,index_merge_sort_union=off';
+set optimizer_switch='default,index_merge_sort_union=off,rowid_filter=off';
 explain select * from t1 where (a=3 or b in (1,2)) and (c=3 or d=4);
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b,c,d	c,d	5,5	NULL	100	Using union(c,d); Using where
@@ -1576,22 +1577,22 @@ explain select * from t1 where a=10 and b=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	1	Using intersect(a,b); Using where
 No intersect when index_merge is disabled:
-set optimizer_switch='default,index_merge=off';
+set optimizer_switch='default,index_merge=off,rowid_filter=off';
 explain select * from t1 where a=10 and b=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ref	a,b	a	5	const	49	Using where
 No intersect if it is disabled:
-set optimizer_switch='default,index_merge_sort_intersection=off,index_merge_intersection=off';
+set optimizer_switch='default,index_merge_sort_intersection=off,index_merge_intersection=off,rowid_filter=off';
 explain select * from t1 where a=10 and b=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ref	a,b	a	5	const	49	Using where
 Do intersect when union was disabled
-set optimizer_switch='default,index_merge_union=off';
+set optimizer_switch='default,index_merge_union=off,rowid_filter=off';
 explain select * from t1 where a=10 and b=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	1	Using intersect(a,b); Using where
 Do intersect when sort_union was disabled
-set optimizer_switch='default,index_merge_sort_union=off';
+set optimizer_switch='default,index_merge_sort_union=off,rowid_filter=off';
 explain select * from t1 where a=10 and b=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b	a,b	5,5	NULL	1	Using intersect(a,b); Using where
@@ -1601,13 +1602,13 @@ explain select * from t1 where a=10 and b=10 or c=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b,c	a,b,c	5,5,5	NULL	6	Using union(intersect(a,b),c); Using where
 Should be only union left:
-set optimizer_switch='default,index_merge_intersection=off';
+set optimizer_switch='default,index_merge_intersection=off,rowid_filter=off';
 explain select * from t1 where a=10 and b=10 or c=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b,c	a,c	5,5	NULL	54	Using union(a,c); Using where
 This will switch to sort-union (intersection will be gone, too,
 that's a known limitation:
-set optimizer_switch='default,index_merge_union=off';
+set optimizer_switch='default,index_merge_union=off,rowid_filter=off';
 explain select * from t1 where a=10 and b=10 or c=10;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	index_merge	a,b,c	a,c	5,5	NULL	54	Using sort_union(a,c); Using where

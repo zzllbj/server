@@ -325,6 +325,8 @@ enum enum_alter_inplace_result {
 */
 #define HA_CLUSTERED_INDEX      512
 
+#define HA_DO_RANGE_FILTER_PUSHDOWN  1024
+
 /*
   bits in alter_table_flags:
 */

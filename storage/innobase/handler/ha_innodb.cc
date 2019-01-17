@@ -5250,7 +5250,8 @@ ha_innobase::index_flags(
 	ulong flags = HA_READ_NEXT | HA_READ_PREV | HA_READ_ORDER
 		      | HA_READ_RANGE | HA_KEYREAD_ONLY
 		      | extra_flag
-		      | HA_DO_INDEX_COND_PUSHDOWN;
+		      | HA_DO_INDEX_COND_PUSHDOWN
+                      | HA_DO_RANGE_FILTER_PUSHDOWN;
 
 	/* For spatial index, we don't support descending scan
 	and ICP so far. */

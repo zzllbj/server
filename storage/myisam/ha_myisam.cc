@@ -769,7 +769,8 @@ ulong ha_myisam::index_flags(uint inx, uint part, bool all_parts) const
   else 
   {
     flags= HA_READ_NEXT | HA_READ_PREV | HA_READ_RANGE |
-          HA_READ_ORDER | HA_KEYREAD_ONLY | HA_DO_INDEX_COND_PUSHDOWN;
+           HA_READ_ORDER | HA_KEYREAD_ONLY | HA_DO_INDEX_COND_PUSHDOWN |
+           HA_DO_RANGE_FILTER_PUSHDOWN;
   }
   return flags;
 }

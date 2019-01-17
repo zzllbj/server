@@ -1003,7 +1003,7 @@ struct TABLE_SHARE
   /* frees the memory allocated in read_frm_image */
   void free_frm_image(const uchar *frm);
 
-  void set_intersected_keys();
+  void set_overlapped_keys();
 };
 
 
@@ -1503,21 +1503,14 @@ public:
   double get_materialization_cost(); // Now used only if is_splittable()==true
   void add_splitting_info_for_key_field(struct KEY_FIELD *key_field);
 
-
-  /**
-    Range filter info
-  */
-  /* Minimum possible #T value to apply filter*/
-  uint best_filter_count;
-  uint range_filter_cost_info_elements;
+  key_map with_impossible_ranges;
+  uint range_filter_cost_info_elems;
+  Range_filter_cost_info **range_filter_cost_info_ptr;
   Range_filter_cost_info *range_filter_cost_info;
-  Range_filter_cost_info
-    *best_filter_for_current_join_order(uint ref_key_no,
-                                        double record_count,
-                                        double records);
-  void sort_range_filter_cost_info_array();
+  void init_cost_info_for_usable_range_filters(THD *thd);
   void prune_range_filters();
-  void select_usable_range_filters(THD *thd);
+  Range_filter_cost_info *best_filter_for_partial_join(uint access_key_no,
+                                                       double records);
   /**
     System Versioning support
    */

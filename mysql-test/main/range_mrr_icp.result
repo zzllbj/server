@@ -1,5 +1,6 @@
 set @mrr_icp_extra_tmp=@@optimizer_switch;
 set optimizer_switch='mrr=on,mrr_sort_keys=on,index_condition_pushdown=on';
+set optimizer_switch='rowid_filter=off';
 set @innodb_stats_persistent_save= @@innodb_stats_persistent;
 set @innodb_stats_persistent_sample_pages_save=
 @@innodb_stats_persistent_sample_pages;
@@ -2592,7 +2593,7 @@ explain select * from t1,t2
 where a = d and (a,e) in ((3,3),(7,7),(8,8)) and length(f) = 1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	range	idx	idx	5	NULL	6	Using index condition; Rowid-ordered scan
-1	SIMPLE	t2	ref|filter	idx1,idx2	idx1|idx2	5|5	test.t1.a	12 (14%)	Using where; Using filter
+1	SIMPLE	t2	ref	idx1,idx2	idx1	5	test.t1.a	12	Using where
 explain format=json select * from t1,t2
 where a = d and (a,e) in ((3,3),(7,7),(8,8)) and length(f) = 1;
 EXPLAIN
@@ -2619,14 +2620,6 @@ EXPLAIN
       "key_length": "5",
       "used_key_parts": ["d"],
       "ref": ["test.t1.a"],
-      "rowid_filter": {
-        "range": {
-          "key": "idx2",
-          "used_key_parts": ["e"]
-        },
-        "rows": 15,
-        "selectivity_pct": 14.423
-      },
       "rows": 12,
       "filtered": 100,
       "attached_condition": "(t1.a,t2.e) in (<cache>((3,3)),<cache>((7,7)),<cache>((8,8))) and octet_length(t2.f) = 1"
@@ -2697,7 +2690,7 @@ insert into t1 select * from t1;
 explain select * from t1,t2 
 where a = d and (a,e) in ((4,4),(7,7),(8,8)) and length(f) = 1;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
-1	SIMPLE	t2	range|filter	idx1,idx2	idx1|idx2	5|5	NULL	7 (7%)	Using index condition; Using where; Rowid-ordered scan; Using filter
+1	SIMPLE	t2	range	idx1,idx2	idx1	5	NULL	7	Using index condition; Using where; Rowid-ordered scan
 1	SIMPLE	t1	ref	idx	idx	5	test.t2.d	11	
 explain format=json select * from t1,t2 
 where a = d and (a,e) in ((4,4),(7,7),(8,8)) and length(f) = 1;
@@ -2712,14 +2705,6 @@ EXPLAIN
       "key": "idx1",
       "key_length": "5",
       "used_key_parts": ["d"],
-      "rowid_filter": {
-        "range": {
-          "key": "idx2",
-          "used_key_parts": ["e"]
-        },
-        "rows": 7,
-        "selectivity_pct": 6.7308
-      },
       "rows": 7,
       "filtered": 100,
       "index_condition": "t2.d is not null",

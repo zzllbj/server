@@ -14,6 +14,84 @@ use dbt3_s001;
 --enable_result_log
 --enable_query_log
 
+CREATE INDEX i_l_quantity ON lineitem(l_quantity);
+
+CREATE INDEX i_o_totalprice ON orders(o_totalprice);
+
+ANALYZE TABLE lineitem, orders;
+
+set optimizer_use_condition_selectivity=2;
+
+let $with_filter=
+set statement optimizer_switch='rowid_filter=on' for;
+
+let $without_filter=
+set statement optimizer_switch='rowid_filter=off' for;
+
+let $q1=
+SELECT l_orderkey, l_linenumber, l_shipdate, l_quantity FROM lineitem
+  WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-06-30' AND
+         l_quantity > 45;
+
+eval $with_filter EXPLAIN $q1;
+eval $with_filter EXPLAIN FORMAT=JSON $q1;
+--sorted_result
+eval $with_filter $q1;
+
+eval $without_filter EXPLAIN $q1;
+eval $without_filter EXPLAIN FORMAT=JSON $q1;
+--sorted_result
+eval $without_filter $q1;
+
+let $q2=
+SELECT o_orderkey, l_linenumber, l_shipdate, o_totalprice
+  FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+  WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-01-31' AND
+         o_totalprice between 200000 and 230000;
+
+eval $with_filter EXPLAIN $q2;
+eval $with_filter EXPLAIN FORMAT=JSON $q2;
+--sorted_result
+eval $with_filter $q2;
+
+eval $without_filter EXPLAIN $q2;
+eval $without_filter EXPLAIN FORMAT=JSON $q2;
+--sorted_result
+eval $without_filter $q2;
+
+let $q3=
+SELECT o_orderkey, l_linenumber, l_shipdate, l_quantity, o_totalprice
+  FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+  WHERE  l_shipdate BETWEEN '1997-01-01' AND '1997-06-30' AND
+         l_quantity > 45 AND
+         o_totalprice between 180000 and 230000;
+
+eval $with_filter EXPLAIN $q3;
+eval $with_filter EXPLAIN FORMAT=JSON $q3;
+--sorted_result
+eval $with_filter $q3;
+
+eval $without_filter EXPLAIN $q3;
+eval $without_filter EXPLAIN FORMAT=JSON $q3;
+--sorted_result
+eval $without_filter $q3;
+
+let $q4=
+SELECT o_orderkey, l_linenumber, l_shipdate, o_totalprice
+  FROM orders JOIN lineitem ON o_orderkey=l_orderkey
+  WHERE l_shipdate BETWEEN '1997-01-01' AND '1997-06-30' AND
+        o_totalprice between 200000 and 230000;
+
+eval $with_filter EXPLAIN $q4;
+eval $with_filter EXPLAIN FORMAT=JSON $q4;
+--sorted_result
+eval $with_filter $q4;
+
+eval $without_filter EXPLAIN $q4;
+eval $without_filter EXPLAIN FORMAT=JSON $q4;
+--sorted_result
+eval $without_filter $q4;
+
 --echo # lineitem : {i_l_receiptdate, i_l_shipdate} -> i_l_receiptdate
 EXPLAIN SELECT *
 FROM orders JOIN lineitem ON o_orderkey=l_orderkey

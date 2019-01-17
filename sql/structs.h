@@ -120,7 +120,7 @@ typedef struct st_key {
   */
   LEX_CSTRING name;
   key_part_map ext_key_part_map;
-  key_map intersected_with;
+  key_map overlapped;
   uint  block_size;
   enum  ha_key_alg algorithm;
   /* 
