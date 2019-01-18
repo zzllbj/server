@@ -5790,10 +5790,12 @@ storage_engines:
               $$= plugin_hton(plugin);
             else
             {
-              if (thd->variables.sql_mode & MODE_NO_ENGINE_SUBSTITUTION)
+              if (thd->variables.sql_mode & MODE_NO_ENGINE_SUBSTITUTION &&
+                   !thd->slave_thread)
                 my_yyabort_error((ER_UNKNOWN_STORAGE_ENGINE, MYF(0), $1.str));
               $$= 0;
-              push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
+              if (!thd->slave_thread)
+                push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
                                   ER_UNKNOWN_STORAGE_ENGINE,
                                   ER_THD(thd, ER_UNKNOWN_STORAGE_ENGINE),
                                   $1.str);
