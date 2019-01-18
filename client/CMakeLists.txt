@@ -93,11 +93,24 @@ TARGET_LINK_LIBRARIES(async_example ${CLIENT_LIB})
 SET_TARGET_PROPERTIES (mysqlcheck mysqldump mysqlimport mysql_upgrade mysqlshow mysqlslap mysql_plugin async_example
 PROPERTIES HAS_CXX TRUE)
 
-
 FOREACH(t mysql mysqltest mysqltest mysqlcheck mysqldump mysqlimport mysql_upgrade mysqlshow mysql_plugin mysqlbinlog
   mysqladmin mysqlslap async_example)
   ADD_DEPENDENCIES(${t} GenError ${CLIENT_LIB})
 ENDFOREACH()
 
-ADD_DEFINITIONS(-DHAVE_DLOPEN)
+# MariaDB symlinks
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql ${CMAKE_BINARY_DIR}/client/mariadb)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlaccess ${CMAKE_BINARY_DIR}/client/mariadb-access)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqladmin ${CMAKE_BINARY_DIR}/client/mariadb-admin)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlbinlog ${CMAKE_BINARY_DIR}/client/mariadb-binlog)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlcheck ${CMAKE_BINARY_DIR}/client/mariadb-check)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqldump ${CMAKE_BINARY_DIR}/client/mariadb-dump)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_embedded ${CMAKE_BINARY_DIR}/client/mariadb-embedded)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_find_rows ${CMAKE_BINARY_DIR}/client/mariadb-find-rows)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlimport ${CMAKE_BINARY_DIR}/client/mariadb-import)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_plugin ${CMAKE_BINARY_DIR}/client/mariadb-plugin)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlshow ${CMAKE_BINARY_DIR}/client/mariadb-show)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlslap ${CMAKE_BINARY_DIR}/client/mariadb-slap)
+CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_waitpid ${CMAKE_BINARY_DIR}/client/mariadb-waitpid)
 
+ADD_DEFINITIONS(-DHAVE_DLOPEN)

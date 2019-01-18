@@ -332,6 +332,17 @@ ELSE()
       COMPONENT ${${file}_COMPONENT}
      )
   ENDFOREACH()
+
+  # MariaDB symlinks
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_config ${CMAKE_BINARY_DIR}/client/mariadb-config)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_setpermission ${CMAKE_BINARY_DIR}/client/mariadb-setpermission)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_secure_installation ${CMAKE_BINARY_DIR}/client/mariadb-secure-installation)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlaccess ${CMAKE_BINARY_DIR}/client/mariadb-access)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_convert_table_format ${CMAKE_BINARY_DIR}/client/mariadb-convert-table-format)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_find_rows ${CMAKE_BINARY_DIR}/client/mariadb-find-rows)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mytop ${CMAKE_BINARY_DIR}/client/mariadb-top)
+  CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysqlhotcopy ${CMAKE_BINARY_DIR}/client/mariadb-hotcopy)
+
   SET (wsrep_sst_rsync_wan ${CMAKE_CURRENT_BINARY_DIR}/wsrep_sst_rsync_wan)
   ADD_CUSTOM_COMMAND(
     OUTPUT ${wsrep_sst_rsync_wan}
