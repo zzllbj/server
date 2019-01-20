@@ -4695,9 +4695,9 @@ void TABLE::init(THD *thd, TABLE_LIST *tl)
   created= TRUE;
   cond_selectivity= 1.0;
   cond_selectivity_sampling_explain= NULL;
-  range_filter_cost_info_elems= 0;
-  range_filter_cost_info_ptr= NULL;
-  range_filter_cost_info= NULL;
+  range_rowid_filter_cost_info_elems= 0;
+  range_rowid_filter_cost_info_ptr= NULL;
+  range_rowid_filter_cost_info= NULL;
 #ifdef HAVE_REPLICATION
   /* used in RBR Triggers */
   master_had_triggers= 0;

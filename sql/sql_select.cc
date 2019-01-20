@@ -1465,9 +1465,9 @@ int JOIN::optimize()
 }
 
 
-bool JOIN::make_range_filters()
+bool JOIN::make_range_rowid_filters()
 {
-  DBUG_ENTER("make_range_filters");
+  DBUG_ENTER("make_range_rowid_filters");
 
   JOIN_TAB *tab;
 
@@ -1475,12 +1475,11 @@ bool JOIN::make_range_filters()
        tab;
        tab= next_linear_tab(this, tab, WITH_BUSH_ROOTS))
   {
-    if (tab->filter)
+    if (tab->range_rowid_filter_info)
     {
       int err;
       SQL_SELECT *sel;
-      uint elems;
-      Range_filter_ordered_array *filter_container= NULL;
+      Rowid_filter_container *filter_container= NULL;
       Item **sargable_cond= get_sargable_cond(this, tab->table);
       sel= make_select(tab->table, const_table_map, const_table_map,
                        *sargable_cond, (SORT_INFO*) 0, 1, &err);
@@ -1489,7 +1488,7 @@ bool JOIN::make_range_filters()
 
       key_map filter_map;
       filter_map.clear_all();
-      filter_map.set_bit(tab->filter->key_no);
+      filter_map.set_bit(tab->range_rowid_filter_info->key_no);
       filter_map.merge(tab->table->with_impossible_ranges);
       bool force_index_save= tab->table->force_index;
       tab->table->force_index= true;
@@ -1500,13 +1499,15 @@ bool JOIN::make_range_filters()
       if (thd->is_error())
         DBUG_RETURN(1);
       DBUG_ASSERT(sel->quick);
-      elems= (uint) tab->filter->est_elements;
       filter_container=
-        new (thd->mem_root) Range_filter_ordered_array(tab->table, sel, elems);
+        tab->range_rowid_filter_info->create_container();
       if (filter_container)
       {
         tab->rowid_filter=
-          new (thd->mem_root) Rowid_filter(tab->filter, filter_container);
+          new (thd->mem_root) Range_rowid_filter(
+                                          tab->table,
+                                          tab->range_rowid_filter_info,
+                                          filter_container, sel);
       }
     }
   }
@@ -1515,9 +1516,9 @@ bool JOIN::make_range_filters()
 
 
 bool
-JOIN::init_range_filters()
+JOIN::init_range_rowid_filters()
 {
-  DBUG_ENTER("init_range_filters");
+  DBUG_ENTER("init_range_rowid_filters");
 
   JOIN_TAB *tab;
 
@@ -1534,7 +1535,7 @@ JOIN::init_range_filters()
       continue;
     }
     tab->table->file->rowid_filter_push(tab->rowid_filter);
-    tab->is_rowid_filter_filled= false;
+    tab->is_rowid_filter_built= false;
   }
   DBUG_RETURN(0);
 }
@@ -2058,7 +2059,7 @@ int JOIN::optimize_stage2()
   if (get_best_combination())
     DBUG_RETURN(1);
   
-  if (make_range_filters())
+  if (make_range_rowid_filters())
     DBUG_RETURN(1);
 
   if (select_lex->handle_derived(thd->lex, DT_OPTIMIZE))
@@ -2725,7 +2726,7 @@ int JOIN::optimize_stage2()
   if (init_join_caches())
     DBUG_RETURN(1);
 
-  if (init_range_filters())
+  if (init_range_rowid_filters())
     DBUG_RETURN(1);
 
   error= 0;
@@ -5120,7 +5121,7 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
         impossible_range= records == 0 && s->table->reginfo.impossible_range;
         if (join->thd->lex->sql_command == SQLCOM_SELECT &&
             optimizer_flag(join->thd, OPTIMIZER_SWITCH_USE_ROWID_FILTER))
-          s->table->init_cost_info_for_usable_range_filters(join->thd);
+          s->table->init_cost_info_for_usable_range_rowid_filters(join->thd);
       }
       if (!impossible_range)
       {
@@ -6926,14 +6927,14 @@ best_access_path(JOIN      *join,
   double best_time=         DBL_MAX;
   double records=           DBL_MAX;
   table_map best_ref_depends_map= 0;
-  Range_filter_cost_info *best_filter= 0;
+  Range_rowid_filter_cost_info *best_filter= 0;
   double tmp;
   ha_rows rec;
   bool best_uses_jbuf= FALSE;
   MY_BITMAP *eq_join_set= &s->table->eq_join_set;
   KEYUSE *hj_start_key= 0;
   SplM_plan_info *spl_plan= 0;
-  Range_filter_cost_info *filter= 0;
+  Range_rowid_filter_cost_info *filter= 0;
 
   disable_jbuf= disable_jbuf || idx == join->const_tables;  
 
@@ -7329,7 +7330,8 @@ best_access_path(JOIN      *join,
       if (records < DBL_MAX)
       {
         double rows= record_count * records;
-        filter= table->best_filter_for_partial_join(start_key->key, rows);
+        filter=
+          table->best_range_rowid_filter_for_partial_join(start_key->key, rows);
         if (filter)
 	{
           tmp-= filter->get_adjusted_gain(rows, s->worst_seeks) -
@@ -7461,7 +7463,8 @@ best_access_path(JOIN      *join,
       {
         double rows= record_count * s->found_records;
         uint key_no= s->quick->index;
-        filter= s->table->best_filter_for_partial_join(key_no, rows);
+        filter= s->table->best_range_rowid_filter_for_partial_join(key_no,
+                                                                   rows);
         if (filter)
         {
           tmp-= filter->get_gain(rows);
@@ -7559,7 +7562,7 @@ best_access_path(JOIN      *join,
   pos->loosescan_picker.loosescan_key= MAX_KEY;
   pos->use_join_buffer= best_uses_jbuf;
   pos->spl_plan= spl_plan;
-  pos->filter= best_filter;
+  pos->range_rowid_filter_info= best_filter;
    
   loose_scan_opt.save_to_position(s, loose_scan_pos);
 
@@ -9825,7 +9828,7 @@ bool JOIN::get_best_combination()
         is_hash_join_key_no(j->ref.key))
       hash_join= TRUE; 
 
-    j->filter= best_positions[tablenr].filter;
+    j->range_rowid_filter_info= best_positions[tablenr].range_rowid_filter_info;
 
   loop_end:
     /* 
@@ -12566,14 +12569,13 @@ bool error_if_full_join(JOIN *join)
 }
 
 
-void JOIN_TAB::fill_range_filter_if_needed()
+void JOIN_TAB::build_range_rowid_filter_if_needed()
 {
-  if (rowid_filter && !is_rowid_filter_filled)
+  if (rowid_filter && !is_rowid_filter_built)
   {
-    if (!rowid_filter->get_container()->fill())
+    if (!rowid_filter->build())
     {
-      rowid_filter->get_container()->sort();
-      is_rowid_filter_filled= true;
+      is_rowid_filter_built= true;
     }
     else
     {
@@ -19493,7 +19495,7 @@ sub_select(JOIN *join,JOIN_TAB *join_tab,bool end_of_records)
   if (!join_tab->preread_init_done && join_tab->preread_init())
     DBUG_RETURN(NESTED_LOOP_ERROR);
 
-  join_tab->fill_range_filter_if_needed();
+  join_tab->build_range_rowid_filter_if_needed();
 
   join->return_tab= join_tab;
 
@@ -20439,7 +20441,7 @@ int join_init_read_record(JOIN_TAB *tab)
   if (tab->filesort && tab->sort_table())     // Sort table.
     return 1;
 
-  tab->fill_range_filter_if_needed();
+  tab->build_range_rowid_filter_if_needed();
 
   DBUG_EXECUTE_IF("kill_join_init_read_record",
                   tab->join->thd->set_killed(KILL_QUERY););
@@ -22490,7 +22492,7 @@ check_reverse_order:
         tab->use_quick=1;
         tab->ref.key= -1;
         tab->ref.key_parts=0;		// Don't use ref key.
-        tab->filter= 0;
+        tab->range_rowid_filter_info= 0;
         if (tab->rowid_filter)
 	{
           delete tab->rowid_filter;
@@ -25331,11 +25333,12 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
 
   if (rowid_filter)
   {
-    QUICK_SELECT_I *quick= rowid_filter->get_container()->get_select()->quick;
+    Range_rowid_filter *range_filter= (Range_rowid_filter *) rowid_filter;
+    QUICK_SELECT_I *quick= range_filter->get_select()->quick;
 
     Explain_rowid_filter *erf= new (thd->mem_root) Explain_rowid_filter;
     erf->quick= quick->get_explain(thd->mem_root);
-    erf->selectivity= filter->selectivity;
+    erf->selectivity= range_rowid_filter_info->selectivity;
     erf->rows= quick->records;
     eta->rowid_filter= erf;
     //psergey-todo: also do setup for ANALYZE here.

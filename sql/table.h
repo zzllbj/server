@@ -55,7 +55,7 @@ class Virtual_column_info;
 class Table_triggers_list;
 class TMP_TABLE_PARAM;
 class SEQUENCE;
-class Range_filter_cost_info;
+class Range_rowid_filter_cost_info;
 
 /*
   Used to identify NESTED_JOIN structures within a join (applicable only to
@@ -1504,13 +1504,14 @@ public:
   void add_splitting_info_for_key_field(struct KEY_FIELD *key_field);
 
   key_map with_impossible_ranges;
-  uint range_filter_cost_info_elems;
-  Range_filter_cost_info **range_filter_cost_info_ptr;
-  Range_filter_cost_info *range_filter_cost_info;
-  void init_cost_info_for_usable_range_filters(THD *thd);
-  void prune_range_filters();
-  Range_filter_cost_info *best_filter_for_partial_join(uint access_key_no,
-                                                       double records);
+  uint range_rowid_filter_cost_info_elems;
+  Range_rowid_filter_cost_info **range_rowid_filter_cost_info_ptr;
+  Range_rowid_filter_cost_info *range_rowid_filter_cost_info;
+  void init_cost_info_for_usable_range_rowid_filters(THD *thd);
+  void prune_range_rowid_filters();
+  Range_rowid_filter_cost_info *
+  best_range_rowid_filter_for_partial_join(uint access_key_no,
+                                           double records);
   /**
     System Versioning support
    */

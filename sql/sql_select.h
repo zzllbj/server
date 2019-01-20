@@ -510,11 +510,11 @@ typedef struct st_join_table {
   uint n_sj_tables;
 
   bool preread_init_done;
-  Range_filter_cost_info *filter;
+  Range_rowid_filter_cost_info *range_rowid_filter_info;
   Rowid_filter *rowid_filter;
-  bool is_rowid_filter_filled;
+  bool is_rowid_filter_built;
 
-  void fill_range_filter_if_needed();
+  void build_range_rowid_filter_if_needed();
   void cleanup();
   inline bool is_using_loose_index_scan()
   {
@@ -889,7 +889,7 @@ public:
 };
 
 
-class Range_filter_cost_info;
+class Range_rowid_filter_cost_info;
 class Rowid_filter;
 
 
@@ -976,7 +976,7 @@ typedef struct st_position
   /* Info on splitting plan used at this position */  
   SplM_plan_info *spl_plan;
   /* The index for which filter can be built */
-  Range_filter_cost_info *filter;
+  Range_rowid_filter_cost_info *range_rowid_filter_info;
 } POSITION;
 
 typedef Bounds_checked_array<Item_null_result*> Item_null_array;
@@ -1626,8 +1626,8 @@ public:
   bool optimize_unflattened_subqueries();
   bool optimize_constant_subqueries();
   int init_join_caches();
-  bool make_range_filters();
-  bool init_range_filters();
+  bool make_range_rowid_filters();
+  bool init_range_rowid_filters();
   bool make_sum_func_list(List<Item> &all_fields, List<Item> &send_fields,
 			  bool before_group_by, bool recompute= FALSE);
 

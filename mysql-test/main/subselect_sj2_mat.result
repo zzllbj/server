@@ -1253,6 +1253,11 @@ INSERT IGNORE INTO t2 (t2id, t1idref) SELECT t1id, t1id FROM t1;
 INSERT IGNORE INTO t1 VALUES (200001, 'a');
 INSERT IGNORE INTO t2 (t2id, t1idref) VALUES (200011, 200001),(200012, 200001),(200013, 200001);
 INSERT IGNORE INTO t3 VALUES (1, 200011, 1),  (1, 200012, 2), (1, 200013, 3);
+ANALYZE TABLE t1,t2,t3;
+Table	Op	Msg_type	Msg_text
+test.t1	analyze	status	OK
+test.t2	analyze	status	OK
+test.t3	analyze	status	OK
 set @tmp7474= @@optimizer_search_depth;
 SET SESSION optimizer_search_depth = 1;
 SELECT SQL_NO_CACHE 

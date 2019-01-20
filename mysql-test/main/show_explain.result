@@ -1,8 +1,3 @@
-set @innodb_stats_persistent_save= @@innodb_stats_persistent;
-set @innodb_stats_persistent_sample_pages_save=
-@@innodb_stats_persistent_sample_pages;
-set global innodb_stats_persistent= 1;
-set global innodb_stats_persistent_sample_pages=100;
 drop table if exists t0, t1, t2, t3, t4;
 drop view if exists v1;
 SET @old_debug= @@session.debug;
@@ -1320,6 +1315,3 @@ drop table t0,t1,t2;
 connection default;
 disconnect con1;
 set debug_sync='RESET';
-set global innodb_stats_persistent= @innodb_stats_persistent_save;
-set global innodb_stats_persistent_sample_pages=
-@innodb_stats_persistent_sample_pages_save;
