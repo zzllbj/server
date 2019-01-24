@@ -1,6 +1,3 @@
-#
-# MDEV-17323: Backport INFORMATION_SCHEMA.CHECK_CONSTRAINTS to 10.2
-#
 CREATE user boo1;
 GRANT select,create,alter,drop on foo.* to boo1;
 SHOW GRANTS for boo1;
@@ -10,7 +7,6 @@ GRANT SELECT, CREATE, DROP, ALTER ON `foo`.* TO 'boo1'@'%'
 CREATE user boo2;
 create database foo;
 CONNECT con1,localhost, boo1,, foo;
-SET check_constraint_checks=1;
 CREATE TABLE t0
 (
 t int, check (t>32) # table constraint
