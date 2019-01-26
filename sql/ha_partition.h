@@ -98,12 +98,14 @@ public:
   */
   bool partition_name_hash_initialized;
   HASH partition_name_hash;
+  const char *partition_engine_name;
   /** Storage for each partitions Handler_share */
   Parts_share_refs partitions_share_refs;
   Partition_share()
     : auto_inc_initialized(false),
     next_auto_inc_val(0),
     partition_name_hash_initialized(false),
+    partition_engine_name(NULL),
     partition_names(NULL)
   {
     mysql_mutex_init(key_partition_auto_inc_mutex,
@@ -976,6 +978,7 @@ public:
 
   /* The name of the table type that will be used for display purposes */
   virtual const char *table_type() const;
+  virtual const char *real_table_type() const { return table_type(); }
 
   /* The name of the row type used for the underlying tables. */
   virtual enum row_type get_row_type() const;
@@ -1504,7 +1507,7 @@ public:
       DBUG_ASSERT(h == m_file[i]->ht);
     return h;
   }
-
+  virtual bool partition_engine() { return 1;}
   ha_rows part_records(void *_part_elem)
   {
     partition_element *part_elem= reinterpret_cast<partition_element *>(_part_elem);

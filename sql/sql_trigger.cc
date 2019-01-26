@@ -593,7 +593,20 @@ bool mysql_create_or_drop_trigger(THD *thd, TABLE_LIST *tables, bool create)
 
 end:
   if (!result)
+  {
     result= write_bin_log(thd, TRUE, stmt_query.ptr(), stmt_query.length());
+
+    backup_log_info ddl_log;
+    bzero(&ddl_log, sizeof(ddl_log));
+    if (create)
+      ddl_log.query= { C_STRING_WITH_LEN("CREATE") };
+    else
+      ddl_log.query= { C_STRING_WITH_LEN("DROP") };
+    ddl_log.org_storage_engine_name= { C_STRING_WITH_LEN("TRIGGER") };
+    ddl_log.org_database=     thd->lex->spname->m_db;
+    ddl_log.org_table=        thd->lex->spname->m_name;
+    backup_log_ddl(&ddl_log);
+  }
 
   /*
     If we are under LOCK TABLES we should restore original state of

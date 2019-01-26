@@ -2303,6 +2303,7 @@ int ha_maria::end_bulk_insert()
                                                BULK_INSERT_SINGLE_UNDO_AND_NO_REPAIR)))
       first_error= first_error ? first_error : error;
     bulk_insert_single_undo= BULK_INSERT_NONE;  // Safety
+    log_not_redoable_operation("BULK_INSERT");
   }
   DBUG_RETURN(first_error);
 }

@@ -55,7 +55,6 @@
 #include "sql_sequence.h"
 #include "tztime.h"
 
-
 #ifdef __WIN__
 #include <io.h>
 #endif
@@ -2294,10 +2293,12 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
 
   for (table= tables; table; table= table->next_local)
   {
-    bool is_trans= 0;
+    bool is_trans= 0, is_temporary= 0, was_deleted= 0;
     bool table_creation_was_logged= 1;
     LEX_CSTRING db= table->db;
+    LEX_CUSTRING version;
     handlerton *table_type= 0;
+    LEX_CSTRING partition_engine_name= {NULL, 0};
 
     DBUG_PRINT("table", ("table_l: '%s'.'%s'  table: %p  s: %p",
                          table->db.str, table->table_name.str,  table->table,
@@ -2324,6 +2325,7 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
         error= 1;
         goto err;
       }
+      is_temporary= 1;
       error= 0;
       table->table= 0;
     }
@@ -2420,7 +2422,8 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
     DEBUG_SYNC(thd, "rm_table_no_locks_before_delete_table");
     error= 0;
     if (drop_temporary ||
-        (ha_table_exists(thd, &db, &alias, &table_type, &is_sequence) == 0 &&
+        (ha_table_exists(thd, &db, &alias, &version, &partition_engine_name,
+                         &table_type, &is_sequence) == 0 &&
          table_type == 0) ||
         (!drop_view && (was_view= (table_type == view_pseudo_hton))) ||
         (drop_sequence && !is_sequence))
@@ -2499,6 +2502,7 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
                              !dont_log_query);
       if (!error)
       {
+        was_deleted= 1;
         /* Delete the table definition file */
         strmov(end,reg_ext);
         if (table_type && table_type != view_pseudo_hton &&
@@ -2552,6 +2556,21 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
       PSI_CALL_drop_table_share(false, table->db.str, (uint)table->db.length,
                                 table->table_name.str, (uint)table->table_name.length);
       mysql_audit_drop_table(thd, table);
+      if (!is_temporary && was_deleted)
+      {
+        backup_log_info ddl_log;
+        bzero(&ddl_log, sizeof(ddl_log));
+        ddl_log.query= { C_STRING_WITH_LEN("DROP") };
+        if ((ddl_log.org_partitioned= (partition_engine_name.str != 0)))
+          ddl_log.org_storage_engine_name= partition_engine_name;
+        else
+          lex_string_set(&ddl_log.org_storage_engine_name,
+                         ha_resolve_storage_engine_name(table_type));
+        ddl_log.org_database=     table->db;
+        ddl_log.org_table=        table->table_name;
+        ddl_log.org_table_id=     version;
+        backup_log_ddl(&ddl_log);
+      }
     }
 
     DBUG_PRINT("table", ("table: %p  s: %p", table->table,
@@ -2693,6 +2712,9 @@ end:
 
 bool log_drop_table(THD *thd, const LEX_CSTRING *db_name,
                     const LEX_CSTRING *table_name,
+                    const LEX_CSTRING *handler_name,
+                    bool partitioned,
+                    const LEX_CUSTRING *id,
                     bool temporary_table)
 {
   char buff[NAME_LEN*2 + 80];
@@ -2702,7 +2724,7 @@ bool log_drop_table(THD *thd, const LEX_CSTRING *db_name,
 
   if (!mysql_bin_log.is_open())
     DBUG_RETURN(0);
-  
+
   query.length(0);
   query.append(STRING_WITH_LEN("DROP "));
   if (temporary_table)
@@ -2716,12 +2738,25 @@ bool log_drop_table(THD *thd, const LEX_CSTRING *db_name,
   error= thd->binlog_query(THD::STMT_QUERY_TYPE,
                            query.ptr(), query.length(),
                            FALSE, FALSE, temporary_table, 0);
+
+  if (!temporary_table)
+  {
+    backup_log_info ddl_log;
+    bzero(&ddl_log, sizeof(ddl_log));
+    ddl_log.query= { C_STRING_WITH_LEN("DROP_AFTER_CREATE") };
+    ddl_log.org_storage_engine_name= *handler_name;
+    ddl_log.org_partitioned=  partitioned;
+    ddl_log.org_database=     *db_name;
+    ddl_log.org_table=        *table_name;
+    ddl_log.org_table_id=     *id;
+    backup_log_ddl(&ddl_log);
+  }
   DBUG_RETURN(error);
 }
 
 
 /**
-  Quickly remove a table.
+  Quickly remove a table, without any logging
 
   @param thd         Thread context.
   @param base        The handlerton handle.
@@ -4919,7 +4954,10 @@ int create_table_impl(THD *thd, const LEX_CSTRING &orig_db,
   }
   else
   {
-    if (!internal_tmp_table && ha_table_exists(thd, &db, &table_name))
+    handlerton *db_type;
+    if (!internal_tmp_table &&
+        ha_table_exists(thd, &db, &table_name,
+                        &create_info->org_tabledef_version, NULL, &db_type))
     {
       if (options.or_replace())
       {
@@ -4948,6 +4986,8 @@ int create_table_impl(THD *thd, const LEX_CSTRING &orig_db,
         thd->variables.option_bits|= OPTION_KEEP_LOG;
         thd->log_current_statement= 1;
         create_info->table_was_deleted= 1;
+        lex_string_set(&create_info->org_storage_engine_name,
+                       ha_resolve_storage_engine_name(db_type));
         DBUG_EXECUTE_IF("send_kill_after_delete", thd->set_killed(KILL_QUERY); );
 
         /*
@@ -5283,6 +5323,18 @@ err:
     if (unlikely(write_bin_log(thd, result ? FALSE : TRUE, thd->query(),
                                thd->query_length(), is_trans)))
       result= 1;
+    if (!create_info->tmp_table())
+    {
+      backup_log_info ddl_log;
+      bzero(&ddl_log, sizeof(ddl_log));
+      ddl_log.query= { C_STRING_WITH_LEN("CREATE") };
+      ddl_log.org_partitioned= (create_info->db_type == partition_hton);
+      ddl_log.org_storage_engine_name= create_info->new_storage_engine_name;
+      ddl_log.org_database=     create_table->db;
+      ddl_log.org_table=        create_table->table_name;
+      ddl_log.org_table_id=     create_info->tabledef_version;
+      backup_log_ddl(&ddl_log);
+    }
   }
   DBUG_RETURN(result);
 }
@@ -5430,14 +5482,12 @@ bool operator!=(const MYSQL_TIME &lhs, const MYSQL_TIME &rhs)
   @param old_name  The old table name.
   @param new_db    The new database name.
   @param new_name  The new table name.
+  @param id        Table version id (for ddl log)
   @param flags     flags
                    FN_FROM_IS_TMP old_name is temporary.
                    FN_TO_IS_TMP   new_name is temporary.
-                   NO_FRM_RENAME  Don't rename the FRM file
-                                  but only the table in the storage engine.
                    NO_HA_TABLE    Don't rename table in engine.
                    NO_FK_CHECKS   Don't check FK constraints during rename.
-
   @return false    OK
   @return true     Error
 */
@@ -5445,7 +5495,7 @@ bool operator!=(const MYSQL_TIME &lhs, const MYSQL_TIME &rhs)
 bool
 mysql_rename_table(handlerton *base, const LEX_CSTRING *old_db,
                    const LEX_CSTRING *old_name, const LEX_CSTRING *new_db,
-                   const LEX_CSTRING *new_name, uint flags)
+                   const LEX_CSTRING *new_name, LEX_CUSTRING *id, uint flags)
 {
   THD *thd= current_thd;
   char from[FN_REFLEN + 1], to[FN_REFLEN + 1],
@@ -5456,6 +5506,7 @@ mysql_rename_table(handlerton *base, const LEX_CSTRING *old_db,
   int error=0;
   ulonglong save_bits= thd->variables.option_bits;
   int length;
+  bool log_query= 0;
   DBUG_ENTER("mysql_rename_table");
   DBUG_ASSERT(base);
   DBUG_PRINT("enter", ("old: '%s'.'%s'  new: '%s'.'%s'",
@@ -5469,8 +5520,8 @@ mysql_rename_table(handlerton *base, const LEX_CSTRING *old_db,
 
   build_table_filename(from, sizeof(from) - 1, old_db->str, old_name->str, "",
                        flags & FN_FROM_IS_TMP);
-  length= build_table_filename(to, sizeof(to) - 1, new_db->str, new_name->str, "",
-                               flags & FN_TO_IS_TMP);
+  length= build_table_filename(to, sizeof(to) - 1, new_db->str, new_name->str,
+                               "", flags & FN_TO_IS_TMP);
   // Check if we hit FN_REFLEN bytes along with file extension.
   if (length+reg_ext_length > FN_REFLEN)
   {
@@ -5509,11 +5560,13 @@ mysql_rename_table(handlerton *base, const LEX_CSTRING *old_db,
   {
     if (rename_file_ext(from,to,reg_ext))
       error= my_errno;
-    (void) file->ha_create_partitioning_metadata(to, from, CHF_RENAME_FLAG);
+    log_query= true;
+    if (file)
+      (void) file->ha_create_partitioning_metadata(to, from, CHF_RENAME_FLAG);
   }
   else if (!file || likely(!(error=file->ha_rename_table(from_base, to_base))))
   {
-    if (!(flags & NO_FRM_RENAME) && unlikely(rename_file_ext(from,to,reg_ext)))
+    if (unlikely(rename_file_ext(from,to,reg_ext)))
     {
       error=my_errno;
       if (file)
@@ -5524,6 +5577,25 @@ mysql_rename_table(handlerton *base, const LEX_CSTRING *old_db,
           file->ha_rename_table(to_base, from_base); // Restore old file name
       }
     }
+    else
+      log_query= true;
+  }
+  if (!error && log_query && !(flags & (FN_TO_IS_TMP | FN_FROM_IS_TMP)))
+  {
+    backup_log_info ddl_log;
+    bzero(&ddl_log, sizeof(ddl_log));
+    ddl_log.query= { C_STRING_WITH_LEN("RENAME") };
+    ddl_log.org_partitioned=  file->partition_engine();
+    ddl_log.new_partitioned=  ddl_log.org_partitioned;
+    lex_string_set(&ddl_log.org_storage_engine_name, file->real_table_type());
+    ddl_log.org_database=     *old_db;
+    ddl_log.org_table=        *old_name;
+    ddl_log.org_table_id=     *id;
+    ddl_log.new_storage_engine_name= ddl_log.org_storage_engine_name;
+    ddl_log.new_database=     *new_db;
+    ddl_log.new_table=        *new_name;
+    ddl_log.new_table_id=     *id;
+    backup_log_ddl(&ddl_log);
   }
   delete file;
 
@@ -5824,7 +5896,6 @@ bool mysql_create_like_table(THD* thd, TABLE_LIST* table,
           if (write_bin_log(thd, TRUE, query.ptr(), query.length()))
           {
             res= 1;
-            do_logging= 0;
             goto err;
           }
 
@@ -5876,7 +5947,11 @@ err:
         Table was not deleted. Original table was deleted.
         We have to log it.
       */
-      log_drop_table(thd, &table->db, &table->table_name, create_info->tmp_table());
+      log_drop_table(thd, &table->db, &table->table_name,
+                     &create_info->org_storage_engine_name,
+                     create_info->db_type == partition_hton,
+                     &create_info->org_tabledef_version,
+                     create_info->tmp_table());
     }
     else if (res != 2)                         // Table was not dropped
     {
@@ -5885,7 +5960,20 @@ err:
       res= 1;
     }
   }
-
+  if (!res)
+  {
+    if (!create_info->tmp_table())
+    {
+      backup_log_info ddl_log;
+      bzero(&ddl_log, sizeof(ddl_log));
+      ddl_log.query= { C_STRING_WITH_LEN("CREATE") };
+      ddl_log.org_storage_engine_name= local_create_info.new_storage_engine_name;
+      ddl_log.org_database=     table->db,
+      ddl_log.org_table=        table->table_name,
+      ddl_log.org_table_id=     local_create_info.tabledef_version;
+      backup_log_ddl(&ddl_log);
+    }
+  }
   DBUG_RETURN(res != 0);
 }
 
@@ -7504,7 +7592,6 @@ static bool mysql_inplace_alter_table(THD *thd,
   Alter_info *alter_info= ha_alter_info->alter_info;
   bool reopen_tables= false;
   bool res;
-
   DBUG_ENTER("mysql_inplace_alter_table");
 
   /* Downgrade DDL lock while we are waiting for exclusive lock below */
@@ -7727,6 +7814,7 @@ static bool mysql_inplace_alter_table(THD *thd,
   */
   if (mysql_rename_table(db_type, &alter_ctx->new_db, &alter_ctx->tmp_name,
                          &alter_ctx->db, &alter_ctx->alias,
+                         &alter_ctx->tmp_id,
                          FN_FROM_IS_TMP | NO_HA_TABLE) ||
                          thd->is_error())
   {
@@ -7760,7 +7848,8 @@ static bool mysql_inplace_alter_table(THD *thd,
                      alter_ctx->db.str, alter_ctx->table_name.str, false);
 
     if (mysql_rename_table(db_type, &alter_ctx->db, &alter_ctx->table_name,
-                           &alter_ctx->new_db, &alter_ctx->new_alias, 0))
+                           &alter_ctx->new_db, &alter_ctx->new_alias,
+                           &alter_ctx->tmp_id, 0))
     {
       /*
         If the rename fails we will still have a working table
@@ -7781,7 +7870,9 @@ static bool mysql_inplace_alter_table(THD *thd,
       */
       (void) mysql_rename_table(db_type,
                                 &alter_ctx->new_db, &alter_ctx->new_alias,
-                                &alter_ctx->db, &alter_ctx->alias, NO_FK_CHECKS);
+                                &alter_ctx->db, &alter_ctx->alias,
+                                &alter_ctx->id,
+                                NO_FK_CHECKS);
       DBUG_RETURN(true);
     }
     rename_table_in_stat_tables(thd, &alter_ctx->db, &alter_ctx->alias,
@@ -9074,10 +9165,25 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
   TABLE *table= table_list->table;
   MDL_ticket *mdl_ticket= table->mdl_ticket;
   int error= 0;
+  LEX_CSTRING storage_engine;
+  LEX_CUSTRING table_version;
+  uchar table_version_buff[MY_UUID_SIZE];
+  char storage_engine_buff[NAME_LEN];
+  bool partitioned;
   enum ha_extra_function extra_func= thd->locked_tables_mode
                                        ? HA_EXTRA_NOT_USED
                                        : HA_EXTRA_FORCE_REOPEN;
   DBUG_ENTER("simple_rename_or_index_change");
+
+  if ((table_version.length= table->s->tabledef_version.length))
+    memcpy(table_version_buff, table->s->tabledef_version.str, MY_UUID_SIZE);
+  table_version.str= table_version_buff;
+  storage_engine.str= storage_engine_buff;
+  partitioned= table->file->partition_engine();
+  storage_engine.length= (strmake(storage_engine_buff,
+                                  table->file->real_table_type(),
+                                  sizeof(storage_engine_buff)-1) -
+                          storage_engine_buff);
 
   if (keys_onoff != Alter_info::LEAVE_AS_IS)
   {
@@ -9092,6 +9198,18 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
     error= alter_table_manage_keys(table,
                                    table->file->indexes_are_disabled(),
                                    keys_onoff);
+    if (table->s->tmp_table == NO_TMP_TABLE)
+    {
+      backup_log_info ddl_log;
+      bzero(&ddl_log, sizeof(ddl_log));
+      ddl_log.query= { C_STRING_WITH_LEN("CHANGE_INDEX") };
+      ddl_log.org_storage_engine_name= storage_engine;
+      ddl_log.org_partitioned=  partitioned;
+      ddl_log.org_database=     table_list->table->s->db;
+      ddl_log.org_table=        table_list->table->s->table_name;
+      ddl_log.org_table_id=     table_version;
+      backup_log_ddl(&ddl_log);
+    }
   }
 
   if (likely(!error) && alter_ctx->is_table_renamed())
@@ -9117,7 +9235,8 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
                                        &alter_ctx->new_alias);
 
     if (mysql_rename_table(old_db_type, &alter_ctx->db, &alter_ctx->table_name,
-                           &alter_ctx->new_db, &alter_ctx->new_alias, 0))
+                           &alter_ctx->new_db, &alter_ctx->new_alias,
+                           &table_version, 0))
       error= -1;
     else if (Table_triggers_list::change_table_name(thd,
                                                  &alter_ctx->db,
@@ -9129,6 +9248,7 @@ simple_rename_or_index_change(THD *thd, TABLE_LIST *table_list,
       (void) mysql_rename_table(old_db_type,
                                 &alter_ctx->new_db, &alter_ctx->new_alias,
                                 &alter_ctx->db, &alter_ctx->table_name,
+                                &table_version,
                                 NO_FK_CHECKS);
       error= -1;
     }
@@ -9855,6 +9975,9 @@ do_continue:;
     DBUG_RETURN(true);
   }
 
+  /* Remember version id for temporary table */
+  alter_ctx.tmp_id= create_info->tabledef_version;
+
   /* Remember that we have not created table in storage engine yet. */
   bool no_ha_table= true;
 
@@ -9911,6 +10034,15 @@ do_continue:;
 
     /* Set markers for fields in TABLE object for altered table. */
     update_altered_table(ha_alter_info, &altered_table);
+
+    /* Remember storage engine name */
+    alter_ctx.tmp_storage_engine_name_partitioned=
+      altered_table.file->partition_engine();
+    alter_ctx.tmp_storage_engine_name.length=
+      (strmake((char*) alter_ctx.tmp_storage_engine_name.str,
+               altered_table.file->real_table_type(),
+               sizeof(alter_ctx.tmp_storage_engine_buff)-1) -
+       alter_ctx.tmp_storage_engine_name.str);
 
     /*
       Mark all columns in 'altered_table' as used to allow usage
@@ -10175,6 +10307,15 @@ do_continue:;
     goto end_temporary;
   }
 
+  /* Remember storage engine name for the new table */
+  alter_ctx.tmp_storage_engine_name_partitioned=
+    new_table->file->partition_engine();
+  alter_ctx.tmp_storage_engine_name.length=
+    (strmake((char*) alter_ctx.tmp_storage_engine_name.str,
+             new_table->file->real_table_type(),
+             sizeof(alter_ctx.tmp_storage_engine_buff)-1) -
+     alter_ctx.tmp_storage_engine_name.str);
+
   /*
     Close the intermediate table that will be the new table, but do
     not delete it! Even though MERGE tables do not have their children
@@ -10229,7 +10370,8 @@ do_continue:;
   if (lower_case_table_names)
     my_casedn_str(files_charset_info, backup_name_buff);
   if (mysql_rename_table(old_db_type, &alter_ctx.db, &alter_ctx.table_name,
-                         &alter_ctx.db, &backup_name, FN_TO_IS_TMP))
+                         &alter_ctx.db, &backup_name,
+                         &alter_ctx.id, FN_TO_IS_TMP))
   {
     // Rename to temporary name failed, delete the new table, abort ALTER.
     (void) quick_rm_table(thd, new_db_type, &alter_ctx.new_db,
@@ -10240,6 +10382,7 @@ do_continue:;
   // Rename the new table to the correct name.
   if (mysql_rename_table(new_db_type, &alter_ctx.new_db, &alter_ctx.tmp_name,
                          &alter_ctx.new_db, &alter_ctx.new_alias,
+                         &alter_ctx.tmp_id,
                          FN_FROM_IS_TMP))
   {
     // Rename failed, delete the temporary table.
@@ -10249,6 +10392,7 @@ do_continue:;
     // Restore the backup of the original table to the old name.
     (void) mysql_rename_table(old_db_type, &alter_ctx.db, &backup_name,
                               &alter_ctx.db, &alter_ctx.alias,
+                              &alter_ctx.id,
                               FN_FROM_IS_TMP | NO_FK_CHECKS);
     goto err_with_mdl;
   }
@@ -10269,6 +10413,7 @@ do_continue:;
       // Restore the backup of the original table to the old name.
       (void) mysql_rename_table(old_db_type, &alter_ctx.db, &backup_name,
                                 &alter_ctx.db, &alter_ctx.alias,
+                                &alter_ctx.id,
                                 FN_FROM_IS_TMP | NO_FK_CHECKS);
       goto err_with_mdl;
     }
@@ -10301,6 +10446,24 @@ end_inplace:
                 (create_info->tmp_table())));
   if (write_bin_log(thd, true, thd->query(), thd->query_length()))
     DBUG_RETURN(true);
+
+  if (!alter_ctx.tmp_table)
+  {
+    backup_log_info ddl_log;
+    bzero(&ddl_log, sizeof(ddl_log));
+    ddl_log.query= { C_STRING_WITH_LEN("ALTER") };
+    ddl_log.org_storage_engine_name= alter_ctx.storage_engine_name;
+    ddl_log.org_partitioned=         alter_ctx.storage_engine_partitioned;
+    ddl_log.org_database=            alter_ctx.db;
+    ddl_log.org_table=               alter_ctx.table_name,
+    ddl_log.org_table_id=            alter_ctx.id;
+    ddl_log.new_storage_engine_name= alter_ctx.tmp_storage_engine_name;
+    ddl_log.new_partitioned=    alter_ctx.tmp_storage_engine_name_partitioned;
+    ddl_log.new_database=            alter_ctx.new_db;
+    ddl_log.new_table=               alter_ctx.new_alias;
+    ddl_log.new_table_id=            alter_ctx.tmp_id;
+    backup_log_ddl(&ddl_log);
+  }
 
   table_list->table= NULL;			// For query cache
   query_cache_invalidate3(thd, table_list, false);
@@ -11082,7 +11245,10 @@ err:
 
   @retval true  Engine not available/supported, error has been reported.
   @retval false Engine available/supported.
+                create_info->db_type & create_info->new_storage_engine_name
+                are updated.
 */
+
 bool check_engine(THD *thd, const char *db_name,
                   const char *table_name, HA_CREATE_INFO *create_info)
 {
@@ -11136,5 +11302,7 @@ bool check_engine(THD *thd, const char *db_name,
     *new_engine= myisam_hton;
   }
 
+  lex_string_set(&create_info->new_storage_engine_name,
+                 ha_resolve_storage_engine_name(*new_engine));
   DBUG_RETURN(false);
 }

@@ -257,12 +257,14 @@ do_rename_temporary(THD *thd, TABLE_LIST *ren_table, TABLE_LIST *new_table,
 
 static bool
 do_rename(THD *thd, TABLE_LIST *ren_table, const LEX_CSTRING *new_db,
-          const LEX_CSTRING *new_table_name, const LEX_CSTRING *new_table_alias,
+          const LEX_CSTRING *new_table_name,
+          const LEX_CSTRING *new_table_alias,
           bool skip_error)
 {
   int rc= 1;
   handlerton *hton;
   LEX_CSTRING old_alias, new_alias;
+  LEX_CUSTRING old_version;
   DBUG_ENTER("do_rename");
 
   if (lower_case_table_names == 2)
@@ -283,7 +285,8 @@ do_rename(THD *thd, TABLE_LIST *ren_table, const LEX_CSTRING *new_db,
     DBUG_RETURN(1);                     // This can't be skipped
   }
 
-  if (ha_table_exists(thd, &ren_table->db, &old_alias, &hton) && hton)
+  if (ha_table_exists(thd, &ren_table->db, &old_alias, &old_version,
+                      NULL, &hton) && hton)
   {
     DBUG_ASSERT(!thd->locked_tables_mode);
     tdc_remove_table(thd, TDC_RT_REMOVE_ALL,
@@ -292,7 +295,7 @@ do_rename(THD *thd, TABLE_LIST *ren_table, const LEX_CSTRING *new_db,
     if (hton != view_pseudo_hton)
     {
       if (!(rc= mysql_rename_table(hton, &ren_table->db, &old_alias,
-                                   new_db, &new_alias, 0)))
+                                   new_db, &new_alias, &old_version, 0)))
       {
         (void) rename_table_in_stat_tables(thd, &ren_table->db,
                                            &ren_table->table_name,
@@ -310,7 +313,8 @@ do_rename(THD *thd, TABLE_LIST *ren_table, const LEX_CSTRING *new_db,
             and handler's data and report about failure to rename table.
           */
           (void) mysql_rename_table(hton, new_db, &new_alias,
-                                    &ren_table->db, &old_alias, NO_FK_CHECKS);
+                                    &ren_table->db, &old_alias, &old_version,
+                                    NO_FK_CHECKS);
         }
       }
     }

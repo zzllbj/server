@@ -4646,6 +4646,20 @@ bool select_create::send_eof()
       mysql_mutex_unlock(&thd->LOCK_thd_data);
     }
 #endif /* WITH_WSREP */
+
+    /* Log query to ddl log */
+    backup_log_info ddl_log;
+    bzero(&ddl_log, sizeof(ddl_log));
+    ddl_log.query= { C_STRING_WITH_LEN("CREATE") };
+    if ((ddl_log.org_partitioned= (create_info->db_type == partition_hton)))
+      ddl_log.org_storage_engine_name= create_info->new_storage_engine_name;
+    else
+      lex_string_set(&ddl_log.org_storage_engine_name,
+                     ha_resolve_storage_engine_name(create_info->db_type));
+    ddl_log.org_database=   create_table->db;
+    ddl_log.org_table=      create_table->table_name;
+    ddl_log.org_table_id=   create_info->tabledef_version;
+    backup_log_ddl(&ddl_log);
   }
   else if (!thd->is_current_stmt_binlog_format_row())
     table->s->table_creation_was_logged= 1;
@@ -4756,12 +4770,34 @@ void select_create::abort_result_set()
     table->auto_increment_field_not_null= FALSE;
     drop_open_table(thd, table, &create_table->db, &create_table->table_name);
     table=0;                                    // Safety
-    if (thd->log_current_statement && mysql_bin_log.is_open())
+    if (thd->log_current_statement)
     {
-      /* Remove logging of drop, create + insert rows */
-      binlog_reset_cache(thd);
-      /* Original table was deleted. We have to log it */
-      log_drop_table(thd, &create_table->db, &create_table->table_name, tmp_table);
+      if (mysql_bin_log.is_open())
+      {
+        /* Remove logging of drop, create + insert rows */
+        binlog_reset_cache(thd);
+        /* Original table was deleted. We have to log it */
+        log_drop_table(thd, &create_table->db, &create_table->table_name,
+                       &create_info->org_storage_engine_name,
+                       create_info->db_type == partition_hton,
+                       &create_info->tabledef_version,
+                       tmp_table);
+      }
+      else
+      {
+        if (!tmp_table)
+        {
+          backup_log_info ddl_log;
+          bzero(&ddl_log, sizeof(ddl_log));
+          ddl_log.query= { C_STRING_WITH_LEN("DROP_AFTER_CREATE") };
+          ddl_log.org_partitioned= (create_info->db_type == partition_hton);
+          ddl_log.org_storage_engine_name= create_info->org_storage_engine_name;
+          ddl_log.org_database=     create_table->db;
+          ddl_log.org_table=        create_table->table_name;
+          ddl_log.org_table_id=     create_info->tabledef_version;
+          backup_log_ddl(&ddl_log);
+        }
+      }
     }
   }
   DBUG_VOID_RETURN;

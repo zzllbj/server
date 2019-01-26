@@ -132,7 +132,6 @@ enum enum_explain_filename_mode
 static const uint FN_FROM_IS_TMP=  1 << 0;
 static const uint FN_TO_IS_TMP=    1 << 1;
 static const uint FN_IS_TMP=       FN_FROM_IS_TMP | FN_TO_IS_TMP;
-static const uint NO_FRM_RENAME=   1 << 2;
 static const uint FRM_ONLY=        1 << 3;
 /** Don't remove table in engine. Remove only .FRM and maybe .PAR files. */
 static const uint NO_HA_TABLE=     1 << 4;
@@ -232,8 +231,8 @@ bool mysql_create_like_table(THD *thd, TABLE_LIST *table,
                              Table_specification_st *create_info);
 bool mysql_rename_table(handlerton *base, const LEX_CSTRING *old_db,
                         const LEX_CSTRING *old_name, const LEX_CSTRING *new_db,
-                        const LEX_CSTRING *new_name, uint flags);
-
+                        const LEX_CSTRING *new_name, LEX_CUSTRING *id,
+                        uint flags);
 bool mysql_backup_table(THD* thd, TABLE_LIST* table_list);
 bool mysql_restore_table(THD* thd, TABLE_LIST* table_list);
 
@@ -246,7 +245,9 @@ int mysql_rm_table_no_locks(THD *thd, TABLE_LIST *tables, bool if_exists,
                             bool drop_sequence,
                             bool log_query, bool dont_free_locks);
 bool log_drop_table(THD *thd, const LEX_CSTRING *db_name,
-                    const LEX_CSTRING *table_name, bool temporary_table);
+                    const LEX_CSTRING *table_name, const LEX_CSTRING *handler,
+                    bool partitioned, const LEX_CUSTRING *id,
+                    bool temporary_table);
 bool quick_rm_table(THD *thd, handlerton *base, const LEX_CSTRING *db,
                     const LEX_CSTRING *table_name, uint flags,
                     const char *table_path=0);

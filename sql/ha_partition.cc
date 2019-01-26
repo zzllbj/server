@@ -3640,6 +3640,15 @@ int ha_partition::open(const char *name, int mode, uint test_if_locked)
   */
   clear_handler_file();
 
+  DBUG_ASSERT(part_share);
+  lock_shared_ha_data();
+  /* Protect against cloned file, for which we don't need engine name */
+  if (m_file[0])
+    part_share->partition_engine_name= table_type();
+  else
+    part_share->partition_engine_name= 0;       // Checked in ha_table_exists()
+  unlock_shared_ha_data();
+
   /*
     Some handlers update statistics as part of the open call. This will in
     some cases corrupt the statistics of the partition handler and thus
