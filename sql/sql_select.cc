@@ -6416,7 +6416,82 @@ update_ref_and_keys(THD *thd, DYNAMIC_ARRAY *keyuse,JOIN_TAB *join_tab,
     if (add_key_part(keyuse,field))
       DBUG_RETURN(TRUE);
   }
-
+  Field *tmp_field;
+  TABLE *table;
+  KEY_FIELD *tmp_key_field;
+  for (tmp_key_field= key_fields; tmp_key_field != end ; tmp_key_field++)
+  {
+    tmp_field= tmp_key_field->field;
+    table= tmp_field->table;
+    if (table->s->long_unique_table)
+    {
+      table->setup_table_hash();
+      for (uint key=0 ; key < table->s->keys ; key++)
+      {
+        KEY *keyinfo= table->key_info+key;
+        if (!(table->keys_in_use_for_query.is_set(key)))
+	     continue;
+        if (keyinfo->algorithm != HA_KEY_ALG_LONG_HASH)
+          continue;
+        uint key_parts= table->actual_n_key_parts(keyinfo);
+        for (uint part=0 ; part <  key_parts ; part++)
+        {
+          if (tmp_field->eq(table->key_info[key].key_part[part].field) &&
+              tmp_field->can_optimize_keypart_ref(tmp_key_field->cond, tmp_key_field->val) &&
+              ((Item_cond*)tmp_key_field->cond)->functype() == Item_func::MULT_EQUAL_FUNC)
+   	      {
+            //Really bad logic, just for poc.
+            KEY_FIELD *tmp= tmp_key_field;
+            bool is_key_part_found;
+            uint matched_key_fields[key_parts];
+            for (part = 0; part < key_parts; part++)
+            {
+              is_key_part_found= false;
+              tmp= tmp_key_field;
+              for (; tmp != end ; tmp++)
+                if (tmp->field->eq(table->key_info[key].key_part[part].field) &&
+                       tmp->field->can_optimize_keypart_ref(tmp->cond, tmp->val) &&
+                       ((Item_cond*)tmp->cond)->functype() == Item_func::MULT_EQUAL_FUNC)
+                {
+                  is_key_part_found= true;
+                  matched_key_fields[part]= tmp-tmp_key_field;
+                  break;
+                }
+              if(!is_key_part_found)
+                break;
+            }
+            if (part == key_parts) //found all key_parts
+            {
+              /*
+                Now we will make one KEY_FIELS with condition
+                DB_ROW_HASH_XX = hash(key_part1,... key_partN)
+              */
+              List<Item > *hash_list= new (thd->mem_root) List<Item >();
+              for (uint i= 0; i < key_parts; i++)
+              {
+                KEY_FIELD *kf= tmp_key_field + matched_key_fields[i];
+                hash_list->push_back(kf->val, thd->mem_root);
+              }
+              Item *hash_item= new (thd->mem_root)Item_func_hash(thd, *hash_list);
+              KEY_FIELD *kf= (KEY_FIELD *) thd->alloc(sizeof(KEY_FIELD));
+              kf->field= (keyinfo->key_part+key_parts)->field;
+              Item_field *hash_field= new (thd->mem_root)Item_field(thd, kf->field);
+              kf->val= hash_item;
+              Type_handler_hybrid_field_type tmp(hash_field->type_handler_for_comparison());
+              Item_equal *eq_item= new (thd->mem_root)Item_equal(thd, tmp.type_handler(),
+                                                      hash_item, hash_field, true);
+              eq_item->set_context_field(hash_field);
+              kf->cond= eq_item;
+              if (add_keyuse(keyuse, kf, key, 0))
+                return TRUE;
+            }
+            break;
+	      }
+        }
+      }
+      table->re_setup_table();
+    }
+  }
   if (select_lex->ftfunc_list->elements)
   {
     if (add_ft_keys(keyuse,join_tab,cond,normal_tables))
