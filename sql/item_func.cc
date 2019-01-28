@@ -1731,6 +1731,7 @@ inline void calc_hash_for_unique(ulong &nr1, ulong &nr2, String *str)
 
 longlong  Item_func_hash::val_int()
 {
+  DBUG_EXECUTE_IF("same_long_unique_hash", return 9;);
   unsigned_flag= true;
   ulong nr1= 1,nr2= 4;
   CHARSET_INFO *cs;
