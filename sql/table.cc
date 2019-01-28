@@ -7457,8 +7457,11 @@ uint TABLE::actual_n_key_parts(KEY *keyinfo)
 
 ulong TABLE::actual_key_flags(KEY *keyinfo)
 {
-  return optimizer_flag(in_use, OPTIMIZER_SWITCH_EXTENDED_KEYS) ?
+  ulong flags= optimizer_flag(in_use, OPTIMIZER_SWITCH_EXTENDED_KEYS) ?
            keyinfo->ext_key_flags : keyinfo->flags;
+  if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
+    flags &= ~HA_NOSAME;
+  return flags;
 } 
 
 
