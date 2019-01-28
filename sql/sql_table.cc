@@ -3368,7 +3368,6 @@ static Create_field * add_hash_field(THD * thd, List<Create_field> *create_list,
   it.rewind();
   cf->field_name= field_name;
   cf->set_handler(&type_handler_longlong);
-  key_info->flags|= HA_NOSAME;
   key_info->algorithm= HA_KEY_ALG_LONG_HASH;
   create_list->push_back(cf,thd->mem_root);
   return cf;
@@ -8408,7 +8407,10 @@ mysql_prepare_alter_table(THD *thd, TABLE *table,
       LEX_CSTRING tmp_name;
       bzero((char*) &key_create_info, sizeof(key_create_info));
       if (key_info->algorithm == HA_KEY_ALG_LONG_HASH)
+      {
+        key_info->flags|= HA_NOSAME;
         key_info->algorithm= HA_KEY_ALG_UNDEF;
+      }
       key_create_info.algorithm= key_info->algorithm;
       /*
         We copy block size directly as some engines, like Area, sets this

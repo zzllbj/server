@@ -47,7 +47,7 @@ Recordlength:                   20
 
 table description:
 Key Start Len Index   Type
-1   12    8   unique  ulonglong NULL       
+1   12    8   multip. ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	UNI		select,insert,update,references		NEVER	NULL
@@ -135,7 +135,7 @@ Recordlength:                   20
 
 table description:
 Key Start Len Index   Type
-1   12    8   unique  ulonglong NULL       
+1   12    8   multip. ulonglong NULL       
 #now some alter commands;
 alter table t1 add column b int;
 desc t1;
@@ -371,10 +371,10 @@ Recordlength:                 3072
 
 table description:
 Key Start Len Index   Type
-1   3063  8   unique  ulonglong NULL       
-2   3055  8   unique  ulonglong NULL       
-3   3047  8   unique  ulonglong NULL       
-4   3039  8   unique  ulonglong NULL       
+1   3063  8   multip. ulonglong NULL       
+2   3055  8   multip. ulonglong NULL       
+3   3047  8   multip. ulonglong NULL       
+4   3039  8   multip. ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	UNI		select,insert,update,references		NEVER	NULL
@@ -728,10 +728,10 @@ Recordlength:                 5092
 
 table description:
 Key Start Len Index   Type
-1   5081  8   unique  ulonglong NULL       
-2   5073  8   unique  ulonglong NULL       
-3   5065  8   unique  ulonglong NULL       
-4   5057  8   unique  ulonglong NULL       
+1   5081  8   multip. ulonglong NULL       
+2   5073  8   multip. ulonglong NULL       
+3   5065  8   multip. ulonglong NULL       
+4   5057  8   multip. ulonglong NULL       
 select * from information_schema.columns where table_schema = 'test' and table_name = 't1';
 TABLE_CATALOG	TABLE_SCHEMA	TABLE_NAME	COLUMN_NAME	ORDINAL_POSITION	COLUMN_DEFAULT	IS_NULLABLE	DATA_TYPE	CHARACTER_MAXIMUM_LENGTH	CHARACTER_OCTET_LENGTH	NUMERIC_PRECISION	NUMERIC_SCALE	DATETIME_PRECISION	CHARACTER_SET_NAME	COLLATION_NAME	COLUMN_TYPE	COLUMN_KEY	EXTRA	PRIVILEGES	COLUMN_COMMENT	IS_GENERATED	GENERATION_EXPRESSION
 def	test	t1	a	1	NULL	YES	blob	65535	65535	NULL	NULL	NULL	NULL	NULL	blob	MUL		select,insert,update,references		NEVER	NULL
@@ -1344,7 +1344,7 @@ drop table t2;
 create table t1(a blob unique not null);
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	blob	NO	PRI	NULL	
+a	blob	NO	UNI	NULL	
 show create table t1;
 Table	Create Table
 t1	CREATE TABLE `t1` (
@@ -1366,7 +1366,7 @@ drop table t1;
 create table t1 (a blob unique not null, b blob not null, c blob not null, unique(b,c));
 desc t1;
 Field	Type	Null	Key	Default	Extra
-a	blob	NO	PRI	NULL	
+a	blob	NO	UNI	NULL	
 b	blob	NO	MUL	NULL	
 c	blob	NO		NULL	
 show create table t1;

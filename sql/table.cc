@@ -799,7 +799,6 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
     }
     if (keyinfo->algorithm == HA_KEY_ALG_LONG_HASH)
     {
-      keyinfo->flags|= HA_NOSAME;
       keyinfo->key_length= HA_HASH_KEY_LENGTH_WITHOUT_NULL;
       //Storing key hash
       key_part++;
@@ -1156,22 +1155,7 @@ bool parse_vcol_defs(THD *thd, MEM_ROOT *mem_root, TABLE *table,
   { 
     Field *field= *field_ptr;
     if (field->flags & LONG_UNIQUE_HASH_FIELD)
-    {/* 
-      Item *temp, **arguments= ((Item_func_hash *)field->vcol_info->expr)->arguments();
-      uint count= ((Item_func_hash *)field->vcol_info->expr)->argument_count();
-      for (uint i=0; i < count; i++)
-      {
-        temp= arguments[i];
-        if (temp->type() == Item::CONST_ITEM)
-        {
-        }
-        else
-        {
-          Item **l_arguments= ((Item_func_left *)temp)->arguments();
-        }
-      }
-      */
-
+    { 
       List<Item > *field_list= new (mem_root) List<Item >();
       Item *list_item;
       KEY *key;
@@ -2278,6 +2262,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
         hash_keypart->fieldnr= hash_field_used_no + 1;
         hash_field= share->field[hash_field_used_no];
         hash_field->flags|= LONG_UNIQUE_HASH_FIELD;//Used in parse_vcol_defs
+        keyinfo->flags&= ~HA_NOSAME;
         share->virtual_fields++;
         hash_field_used_no--;
       }
@@ -2500,7 +2485,8 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           key_part->key_part_flag|= HA_BIT_PART;
 
         if (i == 0 && key != primary_key)
-          field->flags |= (((keyinfo->flags & HA_NOSAME) &&
+          field->flags |= (((keyinfo->flags & HA_NOSAME ||
+                            keyinfo->algorithm == HA_KEY_ALG_LONG_HASH) &&
                            (keyinfo->user_defined_key_parts == 1)) ?
                            UNIQUE_KEY_FLAG : MULTIPLE_KEY_FLAG);
         if (i == 0)
