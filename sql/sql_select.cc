@@ -6482,6 +6482,8 @@ update_ref_and_keys(THD *thd, DYNAMIC_ARRAY *keyuse,JOIN_TAB *join_tab,
                                                       hash_item, hash_field, true);
               eq_item->set_context_field(hash_field);
               kf->cond= eq_item;
+              kf->cond_guard= NULL;
+              kf->sj_pred_no= UINT_MAX;
               if (add_keyuse(keyuse, kf, key, 0))
                 return TRUE;
             }

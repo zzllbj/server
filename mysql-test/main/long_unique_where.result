@@ -15,7 +15,7 @@ key	a
 key_len	9
 ref	const
 rows	8
-Extra	Using where; Full scan on NULL key
+Extra	Using where
 explain select * from t1 where b="34" and c = "34";;
 id	1
 select_type	SIMPLE
@@ -26,7 +26,7 @@ key	b
 key_len	9
 ref	const
 rows	8
-Extra	Using where; Full scan on NULL key
+Extra	Using where
 explain select * from t1 where c="34" and b="34";;
 id	1
 select_type	SIMPLE
@@ -37,7 +37,7 @@ key	b
 key_len	9
 ref	const
 rows	8
-Extra	Using where; Full scan on NULL key
+Extra	Using where
 explain select * from t1 where c="34";;
 id	1
 select_type	SIMPLE
