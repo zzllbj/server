@@ -865,7 +865,7 @@ static bool print_base64(PRINT_EVENT_INFO *print_event_info, Log_event *ev)
 
 
 static bool print_row_event(PRINT_EVENT_INFO *print_event_info, Log_event *ev,
-                            ulong table_id, bool is_stmt_end)
+                            ulonglong table_id, bool is_stmt_end)
 {
   Table_map_log_event *ignored_map= 
     print_event_info->m_table_map_ignored.get_table(table_id);
