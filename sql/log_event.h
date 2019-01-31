@@ -4310,7 +4310,7 @@ private:
   uchar         *m_coltype;
 
   uchar         *m_memory;
-  ulong          m_table_id;
+  ulonglong      m_table_id;
   flag_set       m_flags;
 
   size_t         m_data_size;
@@ -4432,7 +4432,7 @@ public:
   MY_BITMAP const *get_cols() const { return &m_cols; }
   MY_BITMAP const *get_cols_ai() const { return &m_cols_ai; }
   size_t get_width() const          { return m_width; }
-  ulong get_table_id() const        { return m_table_id; }
+  ulonglong get_table_id() const        { return m_table_id; }
 
 #if defined(MYSQL_SERVER)
   /*
@@ -4533,7 +4533,7 @@ protected:
 #ifdef MYSQL_SERVER
   TABLE *m_table;		/* The table the rows belong to */
 #endif
-  ulong       m_table_id;	/* Table ID */
+  ulonglong       m_table_id;	/* Table ID */
   MY_BITMAP   m_cols;		/* Bitmap denoting columns available */
   ulong       m_width;          /* The width of the columns bitmap */
   /*

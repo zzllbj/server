@@ -425,7 +425,7 @@ void mdev10963()
       when total_size < copied_size the huge overflowed value of the last
       argument is ignored because nothing already left uncopied in the cache.
     */
-    res= my_b_copy_to_file(&info, file, total_size - copied_size);
+    res= my_b_copy_to_file(&info, file, (size_t) total_size - copied_size);
     ok(res == 0, "%llu of the cache copied to file", total_size - copied_size);
     ok(my_ftell(file, my_flags) == sizeof(buf),
        "file written in %d fragments", n_frag+1);
