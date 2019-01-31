@@ -3588,7 +3588,18 @@ void Log_event::print_base64(IO_CACHE* file,
       }
 #else
       if (print_event_info->verbose)
+      {
+        /*
+          Verbose event printout can't start before encoded data
+          got enquoted. This is done at this point though multi-row
+          statement remain vulnerable.
+          TODO: fix MDEV-10362 to remove this workaround.
+        */
+        if (print_event_info->base64_output_mode !=
+            BASE64_OUTPUT_DECODE_ROWS)
+          my_b_printf(file, "'%s\n", print_event_info->delimiter);
         ev->print_verbose(file, print_event_info);
+      }
 #endif
       delete ev;
     }
@@ -11377,12 +11388,28 @@ void Rows_log_event::pack_info(Protocol *protocol)
   char const *const flagstr=
     get_flags(STMT_END_F) ? " flags: STMT_END_F" : "";
   size_t bytes= my_snprintf(buf, sizeof(buf),
-                               "table_id: %lu%s", m_table_id, flagstr);
+                               "table_id: %llu%s", m_table_id, flagstr);
   protocol->store(buf, bytes, &my_charset_bin);
 }
 #endif
 
 #ifdef MYSQL_CLIENT
+class my_String : public String
+{
+public:
+  my_String() : String(), error(false) {};
+  bool error;
+
+  bool append(const LEX_STRING *ls)
+  {
+    return error= error || String::append(ls);
+  }
+  bool append(IO_CACHE* file, uint32 arg_length)
+  {
+    return error= error || String::append(file, arg_length);
+  }
+};
+
 /**
   Print an event "body" cache to @c file possibly in two fragments.
   Each fragement is optionally per @c do_wrap to produce an SQL statement.
@@ -11395,25 +11422,40 @@ void Rows_log_event::pack_info(Protocol *protocol)
 
   The function signals on any error through setting @c body->error to -1.
 */
-void copy_cache_to_file_wrapped(FILE *file,
-                                IO_CACHE *body,
-                                bool do_wrap,
-                                const char *delimiter)
+void copy_cache_to_string_wrapped(IO_CACHE *cache,
+                                  LEX_STRING *to,
+                                  bool do_wrap,
+                                  const char *delimiter,
+                                  bool is_verbose)
 {
   const char str_binlog[]= "\nBINLOG '\n";
   const char fmt_delim[]=   "'%s\n";
   const char fmt_n_delim[]= "\n'%s";
-  const my_off_t cache_size= my_b_tell(body);
+  const char fmt_frag[]= "\nSET @binlog_fragment_%d ='\n";
+  const my_off_t cache_size= my_b_tell(cache);
+  my_String ret;
+  /*
+    substring to hold parts of encoded possibly defragramented event
+    whose size is roughly estimated from the top.
+  */
+  char tmp[sizeof(str_binlog) + 2*(sizeof(fmt_frag) + 2 /* %d */) +
+           sizeof(fmt_delim)  + sizeof(fmt_n_delim)               +
+           PRINT_EVENT_INFO::max_delimiter_size];
+  LEX_STRING str_tmp= { tmp, 0 };
 
-  if (reinit_io_cache(body, READ_CACHE, 0L, FALSE, FALSE))
+  if (reinit_io_cache(cache, READ_CACHE, 0L, FALSE, FALSE))
   {
-    body->error= -1;
+    cache->error= -1;
     goto end;
   }
 
   if (!do_wrap)
   {
-    my_b_copy_to_file(body, file, SIZE_T_MAX);
+    if (ret.append(cache, (uint32) cache->end_of_file))
+    {
+      cache->error= -1;
+      goto end;
+    }
   }
   else if (4 + sizeof(str_binlog) + cache_size + sizeof(fmt_delim) >
            opt_binlog_rows_event_max_encoded_size)
@@ -11429,39 +11471,42 @@ void copy_cache_to_file_wrapped(FILE *file,
       limit. The estimate includes the maximum packet header
       contribution of non-compressed packet.
     */
-    const char fmt_frag[]= "\nSET @binlog_fragment_%d ='\n";
+    str_tmp.length= sprintf(str_tmp.str, fmt_frag, 0);
+    ret.append(&str_tmp);
+    ret.append(cache, (uint32) cache_size/2 + 1);
+    str_tmp.length= sprintf(str_tmp.str, fmt_n_delim, delimiter);
+    ret.append(&str_tmp);
 
-    my_fprintf(file, fmt_frag, 0);
-    if (my_b_copy_to_file(body, file, cache_size/2 + 1))
+    str_tmp.length= sprintf(str_tmp.str, fmt_frag, 1);
+    ret.append(&str_tmp);
+    ret.append(cache, (uint32) SIZE_T_MAX);
+    if (!is_verbose)
     {
-      body->error= -1;
-      goto end;
+      str_tmp.length= sprintf(str_tmp.str, fmt_delim, delimiter);
+      ret.append(&str_tmp);
     }
-    my_fprintf(file, fmt_n_delim, delimiter);
-
-    my_fprintf(file, fmt_frag, 1);
-    if (my_b_copy_to_file(body, file, SIZE_T_MAX))
-    {
-      body->error= -1;
-      goto end;
-    }
-    my_fprintf(file, fmt_delim, delimiter);
-
-    my_fprintf(file, "BINLOG @binlog_fragment_0, @binlog_fragment_1%s\n",
+    str_tmp.length= sprintf(str_tmp.str, "BINLOG @binlog_fragment_0, @binlog_fragment_1%s\n",
                delimiter);
   }
   else
   {
-    my_fprintf(file, str_binlog);
-    if (my_b_copy_to_file(body, file, SIZE_T_MAX))
+    str_tmp.length= sprintf(str_tmp.str, str_binlog);
+    ret.append(&str_tmp);
+    ret.append(cache, (uint32) cache->end_of_file);
+    if (!is_verbose)
     {
-      body->error= -1;
-      goto end;
+      str_tmp.length= sprintf(str_tmp.str, fmt_delim, delimiter);
+      ret.append(&str_tmp);
     }
-    my_fprintf(file, fmt_delim, delimiter);
   }
-  reinit_io_cache(body, WRITE_CACHE, 0, FALSE, TRUE);
 
+  to->length= ret.length();
+  to->str=    ret.release();
+
+  reinit_io_cache(cache, WRITE_CACHE, 0, FALSE, TRUE);
+
+  if (ret.error)
+    cache->error= -1;
 end:
   return;
 }
@@ -11520,18 +11565,25 @@ void Rows_log_event::print_helper(FILE *file,
 
   if (get_flags(STMT_END_F))
   {
+    LEX_STRING tmp_str;
 #ifdef WHEN_FLASHBACK_REVIEW_READY
     copy_event_cache_to_string_and_reinit(sql, &tmp_str);
     output_buf.append(&tmp_str);
     my_free(tmp_str.str);
 #endif
-    if (copy_event_cache_to_file_and_reinit(head, file))
+    if (copy_event_cache_to_string_and_reinit(head, &tmp_str))
     {
       head->error= -1;
       return;
     }
-    copy_cache_to_file_wrapped(file, body, do_print_encoded,
-                               print_event_info->delimiter);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
+
+    copy_cache_to_string_wrapped(body, &tmp_str,  do_print_encoded,
+                                 print_event_info->delimiter,
+                                 print_event_info->verbose);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
   }
 }
 #endif

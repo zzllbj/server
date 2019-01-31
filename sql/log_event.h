@@ -836,7 +836,7 @@ typedef struct st_print_event_info
   bool domain_id_printed;
   bool allow_parallel;
   bool allow_parallel_printed;
-
+  static const uint max_delimiter_size= 16;
   /*
     Track when @@skip_replication changes so we need to output a SET
     statement for it.
@@ -872,7 +872,7 @@ typedef struct st_print_event_info
   bool printed_fd_event;
   my_off_t hexdump_from;
   uint8 common_header_len;
-  char delimiter[16];
+  char delimiter[max_delimiter_size];
 
   uint verbose;
   table_mapping m_table_map;
@@ -5092,10 +5092,11 @@ public:
 };
 
 #ifdef MYSQL_CLIENT
-void copy_cache_to_file_wrapped(FILE *file,
-                                PRINT_EVENT_INFO *print_event_info,
-                                IO_CACHE *body,
-                                bool do_wrap);
+void copy_cache_to_string_wrapped(IO_CACHE *body,
+                                  LEX_STRING *to,
+                                  bool do_wrap,
+                                  const char *delimiter,
+                                  bool is_verbose);
 #endif
 
 static inline bool copy_event_cache_to_string_and_reinit(IO_CACHE *cache, LEX_STRING *to)

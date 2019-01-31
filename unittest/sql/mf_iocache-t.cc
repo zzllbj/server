@@ -392,7 +392,7 @@ void mdev10963()
   ok(res == 0, "open_cached_file" INFO_TAIL);
   res= my_b_write(&info, buf, sizeof(buf));
 
-  ulong total_size= my_b_tell(&info);
+  ulonglong total_size= my_b_tell(&info);
   ok(res == 0 && total_size == sizeof(buf), "cache is written");
 
   /* destination */
@@ -426,7 +426,7 @@ void mdev10963()
       argument is ignored because nothing already left uncopied in the cache.
     */
     res= my_b_copy_to_file(&info, file, total_size - copied_size);
-    ok(res == 0, "%lu of the cache copied to file", total_size - copied_size);
+    ok(res == 0, "%llu of the cache copied to file", total_size - copied_size);
     ok(my_ftell(file, my_flags) == sizeof(buf),
        "file written in %d fragments", n_frag+1);
 

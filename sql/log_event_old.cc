@@ -1876,13 +1876,21 @@ void Old_rows_log_event::print_helper(FILE *file,
 
   if (get_flags(STMT_END_F))
   {
-    if (copy_event_cache_to_file_and_reinit(head, file))
+    LEX_STRING tmp_str;
+
+    if (copy_event_cache_to_string_and_reinit(head, &tmp_str))
     {
       head->error= -1;
       return;
     }
-    copy_cache_to_file_wrapped(file, body, do_print_encoded,
-                               print_event_info->delimiter);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
+
+    copy_cache_to_string_wrapped(body, &tmp_str,  do_print_encoded,
+                                 print_event_info->delimiter,
+                                 print_event_info->verbose);
+    output_buf.append(&tmp_str);
+    my_free(tmp_str.str);
   }
 }
 #endif

@@ -1862,11 +1862,6 @@ Item::Type Item_name_const::type() const
 
 bool Item_name_const::fix_fields(THD *thd, Item **ref)
 {
-  char buf[128];
-  String *item_name;
-  String s(buf, sizeof(buf), &my_charset_bin);
-  s.length(0);
-
   if ((!value_item->fixed &&
        value_item->fix_fields(thd, &value_item)) ||
       (!name_item->fixed &&
