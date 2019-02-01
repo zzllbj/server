@@ -11479,14 +11479,15 @@ void copy_cache_to_string_wrapped(IO_CACHE *cache,
 
     str_tmp.length= sprintf(str_tmp.str, fmt_frag, 1);
     ret.append(&str_tmp);
-    ret.append(cache, (uint32) SIZE_T_MAX);
+    ret.append(cache, (uint32) cache->end_of_file - (cache_size/2 + 1));
     if (!is_verbose)
     {
       str_tmp.length= sprintf(str_tmp.str, fmt_delim, delimiter);
       ret.append(&str_tmp);
     }
     str_tmp.length= sprintf(str_tmp.str, "BINLOG @binlog_fragment_0, @binlog_fragment_1%s\n",
-               delimiter);
+                            delimiter);
+    ret.append(&str_tmp);
   }
   else
   {
