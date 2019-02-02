@@ -53,6 +53,24 @@ static ulonglong key_block_no(handler *h, uint keyno, uint keyentry_pos)
     for a user to be able to interrupt the calculation by killing the
     connection/query.
 
+  @note
+    Starting from 10.4 the implementation of this method tries to take into
+    account gaps between range intervals. Before this we had such paradoxical
+    cases when, for example, the cost of the index scan by range [1..3] was
+    almost twice as less than the cost of of the index scan by two intervals
+    [1..1] and [3..3].
+
+  @note
+    The current implementation of the method is not efficient for it
+    requires extra dives for gaps. Although these dives are not expensive
+    as they touch the index nodes that with very high probability are in
+    cache this is still not good. We could avoid it if records in range
+    also returned positions of the ends of range intervals. It's not
+    hard to implement it now for MyISAM as this engine provides a function
+    returning an approximation of the relative position of a key tuple
+    among other index key tuples. Unfortunately InnoDB now does not provide
+    anything like this function.
+
   @retval
     HA_POS_ERROR  Error or the engine is unable to perform the requested
                   scan. Values of OUT parameters are undefined.

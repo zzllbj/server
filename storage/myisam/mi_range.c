@@ -128,7 +128,21 @@ ha_rows mi_records_in_range(MI_INFO *info, int inx,
 }
 
 
-	/* Find relative position (in records) for key in index-tree */
+/*
+  To find an approximate relative position of a key tuple among all index
+  key tuples would not be hard if we considered B-trees where all key
+  tuples were contained only in leaf nodes. If we consider a B-tree where
+  key tuples are stored also in non-leaf nodes we have to convert such
+  tree into the tree of the first type. The transformation procedure is
+  simple: the key tuple k goes alter the last key tuple in the most right
+  sub-tree pointer to which is coupled with k. As a result of this
+  transformation each leaf node except the most right one in the tree will
+  contain one extra key tuple following those originally belonging to
+  the leaf.
+*/
+
+
+/* Find relative position (in records) for key in index-tree */
 
 static double _mi_record_pos(MI_INFO *info, const uchar *key,
                              key_part_map keypart_map,

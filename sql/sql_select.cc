@@ -1465,6 +1465,22 @@ int JOIN::optimize()
 }
 
 
+/**
+  @brief
+    Create range filters objects needed in execution for all join tables
+
+  @details
+    For each join table from the chosen execution plan such that a range filter
+    is used when joining this table the function creates a Rowid_filter object
+    for this range filter. In order to do this the function first constructs
+    a quick select to scan the range for this  range filter. Then it creates
+    a container for the range filter and finally constructs a Range_rowid_filter
+    object a pointer to which is set in the field JOIN_TAB::rowid_filter of
+    the joined table.
+
+  @retval false  always
+*/
+
 bool JOIN::make_range_rowid_filters()
 {
   DBUG_ENTER("make_range_rowid_filters");
@@ -1475,45 +1491,63 @@ bool JOIN::make_range_rowid_filters()
        tab;
        tab= next_linear_tab(this, tab, WITH_BUSH_ROOTS))
   {
-    if (tab->range_rowid_filter_info)
-    {
-      int err;
-      SQL_SELECT *sel;
-      Rowid_filter_container *filter_container= NULL;
-      Item **sargable_cond= get_sargable_cond(this, tab->table);
-      sel= make_select(tab->table, const_table_map, const_table_map,
-                       *sargable_cond, (SORT_INFO*) 0, 1, &err);
-      if (!sel)
-        DBUG_RETURN(1);
+    if (!tab->range_rowid_filter_info)
+      continue;
+    int err;
+    SQL_SELECT *sel= NULL;
+    Rowid_filter_container *filter_container= NULL;
+    Item **sargable_cond= get_sargable_cond(this, tab->table);
+    sel= make_select(tab->table, const_table_map, const_table_map,
+                     *sargable_cond, (SORT_INFO*) 0, 1, &err);
+    if (!sel)
+      continue;
 
-      key_map filter_map;
-      filter_map.clear_all();
-      filter_map.set_bit(tab->range_rowid_filter_info->key_no);
-      filter_map.merge(tab->table->with_impossible_ranges);
-      bool force_index_save= tab->table->force_index;
-      tab->table->force_index= true;
-      (void) sel->test_quick_select(thd, filter_map, (table_map) 0,
-                                    (ha_rows) HA_POS_ERROR,
-				    true, false, true);
-      tab->table->force_index= force_index_save;
-      if (thd->is_error())
-        DBUG_RETURN(1);
-      DBUG_ASSERT(sel->quick);
-      filter_container=
-        tab->range_rowid_filter_info->create_container();
-      if (filter_container)
-      {
-        tab->rowid_filter=
-          new (thd->mem_root) Range_rowid_filter(
-                                          tab->table,
-                                          tab->range_rowid_filter_info,
-                                          filter_container, sel);
-      }
+    key_map filter_map;
+    filter_map.clear_all();
+    filter_map.set_bit(tab->range_rowid_filter_info->key_no);
+    filter_map.merge(tab->table->with_impossible_ranges);
+    bool force_index_save= tab->table->force_index;
+    tab->table->force_index= true;
+    (void) sel->test_quick_select(thd, filter_map, (table_map) 0,
+                                  (ha_rows) HA_POS_ERROR,
+				  true, false, true);
+    tab->table->force_index= force_index_save;
+    if (thd->is_error())
+      goto no_filter;
+    DBUG_ASSERT(sel->quick);
+    filter_container=
+      tab->range_rowid_filter_info->create_container();
+    if (filter_container)
+    {
+      tab->rowid_filter=
+        new (thd->mem_root) Range_rowid_filter(tab->table,
+                                               tab->range_rowid_filter_info,
+                                               filter_container, sel);
+      if (tab->rowid_filter)
+        continue;
     }
+  no_filter:
+    if (sel->quick)
+      delete sel->quick;
+    delete sel;
   }
+
   DBUG_RETURN(0);
 }
 
+
+/**
+  @brief
+    Allocate memory the rowid containers of the used the range filters
+
+  @details
+    For each join table from the chosen execution plan such that a range filter
+    is used when joining this table the function allocate memory for the
+    rowid container employed by the filter. On success it lets the table engine
+    know that what rowid filter will be used when accessing the table rows.
+
+  @retval false  always
+*/
 
 bool
 JOIN::init_range_rowid_filters()

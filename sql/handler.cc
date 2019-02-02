@@ -5760,8 +5760,9 @@ extern "C" enum icp_result handler_index_cond_check(void* h_arg)
 
 /**
   Rowid filter callback - to be called by an engine to check rowid / primary
-  keys of the rows whose data is to be fetched against the set rowid filter
+  keys of the rows whose data is to be fetched against the used rowid filter
 */
+
 extern "C" int handler_rowid_filter_check(void *h_arg)
 {
   handler *h= (handler*) h_arg;
@@ -5770,6 +5771,12 @@ extern "C" int handler_rowid_filter_check(void *h_arg)
   return h->pushed_rowid_filter->check((char *) h->ref);
 }
 
+
+/**
+  Callback function for an engine to check whether the used rowid filter
+  has been already built
+*/
+
 extern "C" int handler_rowid_filter_is_active(void *h_arg)
 {
   if (!h_arg)
@@ -5777,6 +5784,7 @@ extern "C" int handler_rowid_filter_is_active(void *h_arg)
   handler *h= (handler*) h_arg;
   return h->rowid_filter_is_active;
 }
+
 
 int handler::index_read_idx_map(uchar * buf, uint index, const uchar * key,
                                 key_part_map keypart_map,

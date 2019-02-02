@@ -383,7 +383,7 @@ int print_explain_row(select_result_sink *result,
   StringBuffer<64> rows_str;
   if (rows)
   {
-    rows_str.append_ulonglong((ulonglong)(*rows)); 
+    rows_str.append_ulonglong((ulonglong)(*rows));
     item_list.push_back(new (mem_root)
                         Item_string_sys(thd, rows_str.ptr(),
                                         rows_str.length()), mem_root);
@@ -1117,7 +1117,7 @@ void Explain_table_access::fill_key_str(String *key_str, bool is_json) const
    - for hash join, it is key_len:pseudo_key_len
    - [tabular form only] rowid filter length is added after "|".
 
-  In JSON, we consider this column to be legacy, it is superceded by 
+  In JSON, we consider this column to be legacy, it is superceded by
   used_key_parts.
 */
 
@@ -1251,9 +1251,9 @@ int Explain_table_access::print_explain(select_result_sink *output, uint8 explai
     join_type_buf.append(join_type_str[type]);
     join_type_buf.append("|filter");
     item_list.push_back(new (mem_root)
-                        Item_string_sys(thd, join_type_buf.ptr(), 
-                                             join_type_buf.length()), 
-                        mem_root); 
+                        Item_string_sys(thd, join_type_buf.ptr(),
+                                             join_type_buf.length()),
+                        mem_root);
   }
 
   /* `possible_keys` column */
@@ -1595,7 +1595,7 @@ void add_json_keyset(Json_writer *writer, const char *elem_name,
 }
 
 
-void Explain_rowid_filter::print_explain_json(Explain_query *query, 
+void Explain_rowid_filter::print_explain_json(Explain_query *query,
                                               Json_writer *writer,
                                               bool is_analyze)
 {

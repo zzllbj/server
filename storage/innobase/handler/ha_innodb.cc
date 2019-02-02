@@ -7564,7 +7564,7 @@ ha_innobase::build_template(
         } else {
 	        m_prebuilt->pk_filter = NULL;
         }
-                	
+
 	n_fields = (ulint) mysql_fields(table);
 
 	if (!m_prebuilt->mysql_template) {
@@ -20345,7 +20345,7 @@ innobase_pk_filter_is_active(
 /*==========================*/
 	void* file)     /*!< in/out: pointer to ha_innobase */
 {
-  return handler_rowid_filter_is_active(file);
+        return handler_rowid_filter_is_active(file);
 }
 
 /** Parse the table file name into table name and database name.
@@ -20888,12 +20888,12 @@ ha_innobase::idx_cond_push(
 @param[in] pk_filter  PK filter against which primary keys
                       are to be checked */
 
-bool 
+bool
 ha_innobase::rowid_filter_push(
         class Rowid_filter* pk_filter)
 {
         DBUG_ENTER("ha_innobase::rowid_filter_push");
-	DBUG_ASSERT(pk_filter != NULL);
+        DBUG_ASSERT(pk_filter != NULL);
         pushed_rowid_filter= pk_filter;
         DBUG_RETURN(FALSE);
 }

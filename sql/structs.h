@@ -120,6 +120,10 @@ typedef struct st_key {
   */
   LEX_CSTRING name;
   key_part_map ext_key_part_map;
+  /*
+    Bitmap of indexes having common parts with this index
+    (only key parts from key definitions are taken into account)
+  */
   key_map overlapped;
   uint  block_size;
   enum  ha_key_alg algorithm;

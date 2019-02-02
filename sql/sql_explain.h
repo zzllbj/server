@@ -612,12 +612,12 @@ public:
 /*
   Query Plan data structure for Rowid filter.
 */
-class Explain_rowid_filter : public Sql_alloc 
+class Explain_rowid_filter : public Sql_alloc
 {
 public:
   /* Quick select used to collect the rowids into filter */
   Explain_quick_select *quick;
-  
+
   /* How many rows the above quick select is expected to return */
   ha_rows rows;
 
@@ -626,12 +626,12 @@ public:
 
   void print_explain_json(Explain_query *query, Json_writer *writer,
                           bool is_analyze);
-  
+
   /*
     TODO:
       Here should be ANALYZE members:
       - r_rows for the quick select
-      - An object that tracked the table access time 
+      - An object that tracked the table access time
       - real selectivity of the filter.
   */
 };

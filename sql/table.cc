@@ -1227,6 +1227,7 @@ static const Type_handler *old_frm_type_handler(uint pack_flag,
   return Type_handler::get_handler_by_real_type(field_type);
 }
 
+/* Set overlapped bitmaps for each index */
 
 void TABLE_SHARE::set_overlapped_keys()
 {

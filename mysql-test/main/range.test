@@ -1083,46 +1083,46 @@ INSERT INTO t3 SELECT * FROM t3 WHERE a = 10;
 # With one exception, they are independent of Problem#2.
 #
 SELECT * FROM t1 WHERE
-23 <= a AND a < 25 OR 
+23 <= a AND a < 25 OR
 25 < a AND b = 23 OR
 23 <= a;
 
 EXPLAIN
 SELECT * FROM t1 WHERE
-23 <= a AND a < 25 OR 
+23 <= a AND a < 25 OR
 25 < a AND b = 23 OR
 23 <= a;
 
 # Query below: Tests both Problem#1 and Problem#2 (EXPLAIN differs as well)
 SELECT * FROM t1 WHERE
-23 <= a AND a < 25 OR 
+23 <= a AND a < 25 OR
 25 <= a AND b = 23 OR
 23 <= a;
 
 EXPLAIN
 SELECT * FROM t1 WHERE
-23 <= a AND a < 25 OR 
+23 <= a AND a < 25 OR
 25 <= a AND b = 23 OR
 23 <= a;
 
 SELECT * FROM t1 WHERE
-23 <= a AND a <= 25 OR 
+23 <= a AND a <= 25 OR
 25 <= a AND b = 23 OR
 23 <= a;
 
 EXPLAIN
 SELECT * FROM t1 WHERE
-23 <= a AND a <= 25 OR 
+23 <= a AND a <= 25 OR
 25 <= a AND b = 23 OR
 23 <= a;
 
 SELECT * FROM t1 WHERE
-23 <= a AND a <= 25 OR 
+23 <= a AND a <= 25 OR
 23 <= a;
 
 EXPLAIN
 SELECT * FROM t1 WHERE
-23 <= a AND a <= 25 OR 
+23 <= a AND a <= 25 OR
 23 <= a;
 
 #

@@ -737,7 +737,7 @@ void mi_check_print_info(HA_CHECK *param, const char *fmt, ...);
 pthread_handler_t thr_find_all_keys(void *arg);
 extern void mi_set_index_cond_func(MI_INFO *info, index_cond_func_t check_func,
                                    void *func_arg);
-extern void mi_set_rowid_filter_func(MI_INFO *info, 
+extern void mi_set_rowid_filter_func(MI_INFO *info,
                                      rowid_filter_func_t check_func,
                                      rowid_filter_func_t is_active_func,
                                      void *func_arg);

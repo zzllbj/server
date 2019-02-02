@@ -2991,7 +2991,9 @@ public:
   Item *pushed_idx_cond;
   uint pushed_idx_cond_keyno;  /* The index which the above condition is for */
 
+  /* Rowid filter pushed into the engine */
   Rowid_filter *pushed_rowid_filter;
+  /* true when the pushed rowid filter has been already filled */
   bool rowid_filter_is_active;
 
   Discrete_interval auto_inc_interval_for_cur_row;
