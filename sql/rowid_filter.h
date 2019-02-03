@@ -73,6 +73,71 @@
 
 */
 
+/*
+
+  How and when the optimizer builds and uses range rowid filters
+  --------------------------------------------------------------
+
+  1. In make_join_statistics() 
+       for each join table s
+         after the call of get_quick_record_count()
+           the TABLE::method init_cost_info_for_usable_range_rowid_filters()
+           is called
+           The method build an array of Range_rowid_filter_cost_info elements
+           containing the cost info on possible range filters for s->table.
+           The array is optimized for further usage.
+
+  2. For each partial join order when the optimizer considers joining
+     table s to this partial join
+       In the function best_access_path()
+       a. When evaluating a ref access r by index idx to join s
+          the optimizer estimates the effect of usage of each possible
+          range filter f and chooses one with the best gain. The gain
+          is taken into account when the cost of thr ref access r is
+          calculated. If it turns out that this is the best ref access
+          to join s then the info about the chosen filter together
+          with the info on r is remembered in the corresponding element
+          of the array of POSITION structures.
+          [We evaluate every pair (ref access, range_filter) rather then
+           every pair (best ref access, range filter) because if the index
+           ref_idx used for ref access r correlates with the index rf_idx
+           used  by the filter f then the pair (r,f) is not evaluated
+           at all as we don't know how to estimate the effect of correlation
+           between ref_idx and rf_idx.]
+       b. When evaluating the best range access to join table s the
+          optimizer estimates the effect of usage of each possible
+          range filter f and chooses one with the best gain.
+          [Here we should have evaluated every pair (range access,
+           range filter) as well, but it's not done yet.] 
+
+  3. When the cheapest execution plan has been chosen and after the
+     call of JOIN::get_best_combination()
+       The method JOIN::make_range_rowid_filters() is called
+       For each range rowid filter used in the chosen execution plan
+       the method creates a quick select object to be able to perform 
+       index range scan to fill the filter at the execution stage.
+       The method also creates Range_rowid_filter objects that are
+       used at the execution stage.
+
+  4. Just before the execution stage
+       The method JOIN::init_range_rowid_filters() is called.
+       For each join table s that is to be accessed with usage of a range 
+       filter the method allocates containers for the range filter and
+       it lets the engine know that the filter will be used when
+       accessing s.
+
+  5. At the execution stage
+       In the function sub_select() just before the first access of a join
+       table s employing a range filter
+         The method JOIN_TAB::build_range_rowid_filter_if_needed() is called
+         The method fills the filter using the quick select created by
+         JOIN::make_range_rowid_filters().
+
+  6. The accessed key tuples are checked against the filter within the engine
+     using the info pushed into it.
+
+*/
+
 class TABLE;
 class SQL_SELECT;
 class Rowid_filter_container;

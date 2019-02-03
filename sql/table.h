@@ -1504,14 +1504,20 @@ public:
   void add_splitting_info_for_key_field(struct KEY_FIELD *key_field);
 
   key_map with_impossible_ranges;
+
+  /* Number of cost info elements for possible range filters */
   uint range_rowid_filter_cost_info_elems;
-  Range_rowid_filter_cost_info **range_rowid_filter_cost_info_ptr;
+  /* Pointer to the array of cost info elements for range filters */
   Range_rowid_filter_cost_info *range_rowid_filter_cost_info;
+  /* The array of pointers to cost info elements for range filters */
+  Range_rowid_filter_cost_info **range_rowid_filter_cost_info_ptr;
+
   void init_cost_info_for_usable_range_rowid_filters(THD *thd);
   void prune_range_rowid_filters();
   Range_rowid_filter_cost_info *
   best_range_rowid_filter_for_partial_join(uint access_key_no,
                                            double records);
+
   /**
     System Versioning support
    */
