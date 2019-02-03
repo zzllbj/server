@@ -78,7 +78,7 @@
   How and when the optimizer builds and uses range rowid filters
   --------------------------------------------------------------
 
-  1. In make_join_statistics() 
+  1. In make_join_statistics()
        for each join table s
          after the call of get_quick_record_count()
            the TABLE::method init_cost_info_for_usable_range_rowid_filters()
@@ -108,20 +108,20 @@
           optimizer estimates the effect of usage of each possible
           range filter f and chooses one with the best gain.
           [Here we should have evaluated every pair (range access,
-           range filter) as well, but it's not done yet.] 
+           range filter) as well, but it's not done yet.]
 
   3. When the cheapest execution plan has been chosen and after the
      call of JOIN::get_best_combination()
        The method JOIN::make_range_rowid_filters() is called
        For each range rowid filter used in the chosen execution plan
-       the method creates a quick select object to be able to perform 
+       the method creates a quick select object to be able to perform
        index range scan to fill the filter at the execution stage.
        The method also creates Range_rowid_filter objects that are
        used at the execution stage.
 
   4. Just before the execution stage
        The method JOIN::init_range_rowid_filters() is called.
-       For each join table s that is to be accessed with usage of a range 
+       For each join table s that is to be accessed with usage of a range
        filter the method allocates containers for the range filter and
        it lets the engine know that the filter will be used when
        accessing s.
