@@ -933,6 +933,10 @@ SysTablespace::open_or_create(
 
 		space->add(it->m_filepath, OS_FILE_CLOSED, it->m_size,
 			   it->m_type != SRV_NOT_RAW, true, max_size);
+
+		if (space->purpose == FIL_TYPE_TABLESPACE) {
+			fil_space_add_to_encrypt_or_unencrypt_list(space);
+		}
 	}
 
 	return(err);

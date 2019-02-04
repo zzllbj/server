@@ -164,10 +164,18 @@ struct fil_space_t {
 				unflushed_spaces */
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
-	/** other tablespaces needing key rotation */
-	UT_LIST_NODE_T(fil_space_t) rotation_list;
-	/** whether this tablespace needs key rotation */
-	bool		is_in_rotation_list;
+
+	/** List of all encrypted spaces. Protected by fil_system->mutex. */
+	UT_LIST_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** List of all unencrypted spaces. Protected by fil_system->mutex. */
+	UT_LIST_NODE_T(fil_space_t) unencrypted_spaces;
+
+	/** Whether the space is in encrypted list. */
+	bool in_encrypted_list;
+
+	/** Whether the space is in unencrypted list. */
+	bool in_unencrypted_list;
 
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
@@ -207,6 +215,18 @@ struct fil_space_t {
 	fil_node_t* add(const char* name, pfs_os_file_t handle,
 			ulint size, bool is_raw, bool atomic_write,
 			ulint max_pages = ULINT_MAX);
+
+	/** Set the encrypted list flag. */
+	void set_encrypted_list(bool flag) { in_encrypted_list = flag; }
+
+	/** Set the unencrypted list flag. */
+	void set_unencrypted_list(bool flag) { in_unencrypted_list = flag; }
+
+	/** @retval whehter the space is in encrypted list. */
+	bool is_in_encrypted_list() { return in_encrypted_list; }
+
+	/** @retval whether the space is in unencrypted list. */
+	bool is_in_unencrypted_list() { return in_unencrypted_list; }
 };
 
 /** Value of fil_space_t::magic_n */
@@ -522,9 +542,13 @@ struct fil_system_t {
 					record has been written since
 					the latest redo log checkpoint.
 					Protected only by log_sys->mutex. */
-	UT_LIST_BASE_NODE_T(fil_space_t) rotation_list;
-					/*!< list of all file spaces needing
-					key rotation.*/
+	/** list of all encrypted space.
+	Protected only by fil_system->mutex. */
+	UT_LIST_BASE_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** list of all unencrypted spaces.
+	Protected only by fil_system->mutex. */
+	UT_LIST_BASE_NODE_T(fil_space_t) unencrypted_spaces;
 
 	ibool		space_id_reuse_warned;
 					/* !< TRUE if fil_space_create()
@@ -781,18 +805,14 @@ fil_space_next(
 	fil_space_t*	prev_space)
 	MY_ATTRIBUTE((warn_unused_result));
 
-/** Return the next fil_space_t from key rotation list.
-Once started, the caller must keep calling this until it returns NULL.
-fil_space_acquire() and fil_space_release() are invoked here which
-blocks a concurrent operation from dropping the tablespace.
-@param[in,out]	prev_space	Pointer to the previous fil_space_t.
-If NULL, use the first fil_space_t on fil_system->space_list.
-@return pointer to the next fil_space_t.
-@retval NULL if this was the last*/
-fil_space_t*
-fil_space_keyrotate_next(
-	fil_space_t*	prev_space)
-	MY_ATTRIBUTE((warn_unused_result));
+/** Add the space to encrypted or unencrypted list. Remove the space
+from the unencrypted or encrypted list if it is present.
+@param[in]	space	space to be added */
+void fil_space_add_to_encrypt_or_unencrypt_list(fil_space_t* space);
+
+/** Remove the space from encrypted list or unencrypted list.
+@param[in]	space	space to be removed. */
+void fil_space_remove_from_encrypt_or_unencrypt_list(fil_space_t* space);
 
 /** Wrapper with reference-counting for a fil_space_t. */
 class FilSpace
