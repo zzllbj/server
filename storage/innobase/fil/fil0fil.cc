@@ -556,7 +556,6 @@ bool fil_node_t::read_page0(bool first)
 	/* Try to read crypt_data from page 0 if it is not yet read. */
 	if (!space->crypt_data) {
 		space->crypt_data = fil_space_read_crypt_data(page_size, page);
-		fil_space_add_to_encrypt_or_unencrypt_list(space);
 	}
 
 	if (first
@@ -1246,6 +1245,58 @@ fil_node_close_to_free(
 	}
 }
 
+/** Set the crypt status of all tablespace.
+@param[in]	encrypted	whether tablespace added in
+				encrypted list */
+static void fil_space_set_crypt_status(bool encrypted)
+{
+	if (!mysqld_server_started || srv_read_only_mode) {
+		return;
+	}
+
+	ut_ad(mutex_own(&fil_system->mutex));
+
+	ib_uint32_t	status = srv_crypt_space_status;
+
+	if (status == ALL_ENCRYPTED) {
+
+		if (!encrypted) {
+			srv_crypt_space_status = MIXED_STATE;
+		}
+
+	} else if (status == ALL_DECRYPTED) {
+
+		if (encrypted) {
+			srv_crypt_space_status = MIXED_STATE;
+		}
+
+	} else {
+		ulint encrypt_len = UT_LIST_GET_LEN(fil_system->encrypted_spaces);
+		ulint unencrypt_len = UT_LIST_GET_LEN(
+					fil_system->unencrypted_spaces);
+		ulint total_len = UT_LIST_GET_LEN(fil_system->space_list);
+
+		/** In space_list, InnoDB adds redo log and temporary space.
+		So while comparing, remove those fil_space_t. */
+		if (total_len == encrypt_len + 2) {
+			srv_crypt_space_status = ALL_ENCRYPTED;
+		} else if (total_len == unencrypt_len + 2) {
+			srv_crypt_space_status = ALL_DECRYPTED;
+		}
+	}
+
+	if (status == srv_crypt_space_status) {
+		return;
+	}
+
+	mutex_exit(&fil_system->mutex);
+
+	dict_hdr_set_crypt_status(srv_crypt_space_status);
+
+	mutex_enter(&fil_system->mutex);
+}
+
+
 /** Remove the space from encrypted list.
 @param[in]	space	space to be removed from encrypted list. */
 static void fil_space_remove_from_encrypted_list(fil_space_t* space)
@@ -1290,6 +1341,7 @@ static void fil_space_add_encrypted_list(fil_space_t* space)
 
 	UT_LIST_ADD_LAST(fil_system->encrypted_spaces, space);
 	space->set_encrypted_list(true);
+	fil_space_set_crypt_status(true);
 }
 
 /** Add the space to the unencrypted list. Remove the space from
@@ -1305,8 +1357,9 @@ static void fil_space_add_unencrypted_list(fil_space_t* space)
 		fil_space_remove_from_encrypted_list(space);
 	}
 
-	UT_LIST_ADD_LAST(fil_system->encrypted_spaces, space);
-	space->set_encrypted_list(true);
+	UT_LIST_ADD_LAST(fil_system->unencrypted_spaces, space);
+	space->set_unencrypted_list(true);
+	fil_space_set_crypt_status(false);
 }
 
 /** Add the space to encrypted or unencrypted list. Remove the space

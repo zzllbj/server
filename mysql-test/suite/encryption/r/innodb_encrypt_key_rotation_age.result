@@ -1,0 +1,61 @@
+CREATE TABLE t1 (f1 INT, f2 VARCHAR(256))engine=innodb;
+INSERT INTO t1 VALUES(1, 'MariaDB'), (2, 'Robot'), (3, 'Science');
+INSERT INTO t1 SELECT * FROM t1;
+CREATE TABLE t2(f1 INT, f2 VARCHAR(256))engine=innodb;
+INSERT INTO t2 SELECT * FROM t1;
+# Restart the server with encryption
+# Wait until encryption threads have encrypted all tablespaces
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+NAME
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+NAME
+innodb_system
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+test/t1
+test/t2
+# Restart the server with innodb_encryption_rotate_key_age= 0
+create table t3 (f1 int not null)engine=innodb;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+NAME
+innodb_system
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+test/t1
+test/t2
+test/t3
+# Wait until encryption threads have encrypted all tablespaces
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+NAME
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+NAME
+innodb_system
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+test/t1
+test/t2
+test/t3
+# Restart the server with innodb_encryption_rotate_key_age=0
+# and disable encryption
+# Wait until encryption threads to decrypt all tablespaces
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+NAME
+innodb_system
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+test/t1
+test/t2
+test/t3
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+NAME
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+NAME
+innodb_system
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+test/t1
+test/t2
+test/t3
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+NAME
+DROP TABLE t3, t2, t1;
