@@ -645,7 +645,7 @@ UNIV_INLINE
 void
 lock_reset_lock_and_trx_wait(
 /*=========================*/
-	lock_t*	lock)	/*!< in/out: record lock */
+	lock_t* lock)	/*!< in/out: record lock */
 {
 	ut_ad(lock_get_wait(lock));
 	ut_ad(lock_mutex_own());
@@ -1662,13 +1662,6 @@ lock_rec_create_low(
 
 			if (holds_trx_mutex) {
 				trx_mutex_enter(trx);
-			}
-
-			/* trx might not wait for c_lock, but some other lock
-			   does not matter if wait_lock was released above
-			 */
-			if (c_lock->trx->lock.wait_lock == c_lock) {
-				lock_reset_lock_and_trx_wait(lock);
 			}
 
 			trx_mutex_exit(c_lock->trx);
@@ -3794,12 +3787,15 @@ UNIV_INLINE
 lock_t*
 lock_table_create(
 /*==============*/
-	lock_t*		c_lock,	/*!< in: conflicting lock or NULL */
 	dict_table_t*	table,	/*!< in/out: database table
 				in dictionary cache */
 	ulint		type_mode,/*!< in: lock mode possibly ORed with
 				LOCK_WAIT */
-	trx_t*		trx)	/*!< in: trx */
+	trx_t*		trx	/*!< in: trx */
+#ifdef WITH_WSREP
+	, lock_t*	c_lock = NULL	/*!< in: conflicting lock */
+#endif
+	)
 {
 	lock_t*		lock;
 
@@ -3843,58 +3839,50 @@ lock_table_create(
 	UT_LIST_ADD_LAST(trx->lock.trx_locks, lock);
 
 #ifdef WITH_WSREP
-	if (c_lock && wsrep_thd_is_BF(trx->mysql_thd, FALSE)) {
-		ut_list_insert(table->locks, c_lock, lock, TableLockGetNode());
-		if (wsrep_debug) {
-			ib::info() << "table lock BF conflict for " <<
-				ib::hex(c_lock->trx->id);
-			ib::info() << " SQL: "
-				   << wsrep_thd_query(c_lock->trx->mysql_thd);
+	if (c_lock && wsrep_on_trx(trx)) {
+		if (wsrep_thd_is_BF(trx->mysql_thd, FALSE)) {
+			ut_list_insert(table->locks, c_lock, lock,
+				       TableLockGetNode());
+			if (wsrep_debug) {
+				ib::info() << "table lock BF conflict for "
+					   << ib::hex(c_lock->trx->id)
+					   << " SQL: "
+					   << wsrep_thd_query(
+						   c_lock->trx->mysql_thd);
+			}
+		} else {
+			ut_list_append(table->locks, lock, TableLockGetNode());
 		}
-	} else {
-		ut_list_append(table->locks, lock, TableLockGetNode());
-	}
-	if (c_lock) {
-		ut_ad(!trx_mutex_own(c_lock->trx));
+
 		trx_mutex_enter(c_lock->trx);
-	}
 
-	if (c_lock && c_lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
-		c_lock->trx->lock.was_chosen_as_deadlock_victim = TRUE;
+		if (c_lock->trx->lock.que_state == TRX_QUE_LOCK_WAIT) {
+			c_lock->trx->lock.was_chosen_as_deadlock_victim = TRUE;
 
-		if (wsrep_debug) {
-			wsrep_print_wait_locks(c_lock);
+			if (wsrep_debug) {
+				wsrep_print_wait_locks(c_lock);
+			}
+
+			/* The lock release will call lock_grant(),
+			which would acquire trx->mutex again. */
+			trx_mutex_exit(trx);
+			lock_cancel_waiting_and_release(
+				c_lock->trx->lock.wait_lock);
+			trx_mutex_enter(trx);
+
+			if (wsrep_debug) {
+				ib::info() << "WSREP: c_lock canceled "
+					   << ib::hex(c_lock->trx->id)
+					   << " SQL: "
+					   << wsrep_thd_query(
+						   c_lock->trx->mysql_thd);
+			}
 		}
 
-		/* have to release trx mutex for the duration of
-		   victim lock release. This will eventually call
-		   lock_grant, which wants to grant trx mutex again
-		*/
-		/* caller has trx_mutex, have to release for lock cancel */
-		trx_mutex_exit(trx);
-		lock_cancel_waiting_and_release(c_lock->trx->lock.wait_lock);
-		trx_mutex_enter(trx);
-
-		/* trx might not wait for c_lock, but some other lock
-		does not matter if wait_lock was released above
-		*/
-		if (c_lock->trx->lock.wait_lock == c_lock) {
-			lock_reset_lock_and_trx_wait(lock);
-		}
-
-		if (wsrep_debug) {
-			ib::info() << "WSREP: c_lock canceled " << ib::hex(c_lock->trx->id);
-			ib::info() << " SQL: "
-					   << wsrep_thd_query(c_lock->trx->mysql_thd);
-		}
-	}
-
-	if (c_lock) {
 		trx_mutex_exit(c_lock->trx);
-	}
-#else
-	ut_list_append(table->locks, lock, TableLockGetNode());
+	} else
 #endif /* WITH_WSREP */
+	ut_list_append(table->locks, lock, TableLockGetNode());
 
 	if (type_mode & LOCK_WAIT) {
 
@@ -3907,18 +3895,6 @@ lock_table_create(
 	MONITOR_INC(MONITOR_NUM_TABLELOCK);
 
 	return(lock);
-}
-UNIV_INLINE
-lock_t*
-lock_table_create(
-/*==============*/
-	dict_table_t*	table,	/*!< in/out: database table
-				in dictionary cache */
-	ulint		type_mode,/*!< in: lock mode possibly ORed with
-				LOCK_WAIT */
-	trx_t*		trx)	/*!< in: trx */
-{
-	return (lock_table_create(NULL, table, type_mode, trx));
 }
 
 /*************************************************************//**
@@ -4062,11 +4038,14 @@ static
 dberr_t
 lock_table_enqueue_waiting(
 /*=======================*/
-	lock_t*		c_lock,	/*!< in: conflicting lock or NULL */
 	ulint		mode,	/*!< in: lock mode this transaction is
 				requesting */
 	dict_table_t*	table,	/*!< in/out: table */
-	que_thr_t*	thr)	/*!< in: query thread */
+	que_thr_t*	thr	/*!< in: query thread */
+#ifdef WITH_WSREP
+	, lock_t*	c_lock	/*!< in: conflicting lock or NULL */
+#endif
+)
 {
 	trx_t*		trx;
 	lock_t*		lock;
@@ -4096,7 +4075,11 @@ lock_table_enqueue_waiting(
 #endif /* WITH_WSREP */
 
 	/* Enqueue the lock request that will wait to be granted */
-	lock = lock_table_create(c_lock, table, mode | LOCK_WAIT, trx);
+	lock = lock_table_create(table, mode | LOCK_WAIT, trx
+#ifdef WITH_WSREP
+				 , c_lock
+#endif
+				 );
 
 	const trx_t*	victim_trx =
 			DeadlockChecker::check_and_resolve(lock, trx);
@@ -4251,9 +4234,13 @@ lock_table(
 	mode: this trx may have to wait */
 
 	if (wait_for != NULL) {
-		err = lock_table_enqueue_waiting(wait_for, mode | flags, table, thr);
+		err = lock_table_enqueue_waiting(mode | flags, table, thr
+#ifdef WITH_WSREP
+						 , wait_for
+#endif
+						 );
 	} else {
-		lock_table_create(wait_for, table, mode | flags, trx);
+		lock_table_create(table, mode | flags, trx);
 
 		ut_a(!flags || mode == LOCK_S || mode == LOCK_X);
 
