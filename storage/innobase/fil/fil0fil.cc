@@ -1317,6 +1317,10 @@ static void fil_space_remove_from_unencrypted_list(fil_space_t* space)
 @param[in]	space	space to be removed. */
 void fil_space_remove_from_encrypt_or_unencrypt_list(fil_space_t* space)
 {
+	if (srv_operation != SRV_OPERATION_NORMAL) {
+		return;
+	}
+
 	if (space->is_in_encrypted_list()) {
 		fil_space_remove_from_encrypted_list(space);
 	} else if (space->is_in_unencrypted_list()) {
@@ -1367,6 +1371,10 @@ from the unencrypted or encrypted list if it is present.
 @param[in]	space	space to be added. */
 void fil_space_add_to_encrypt_or_unencrypt_list(fil_space_t* space)
 {
+	if (srv_operation != SRV_OPERATION_NORMAL) {
+		return;
+	}
+
 	if (space->crypt_data == NULL
 	    || space->crypt_data->min_key_version == 0) {
 		fil_space_add_unencrypted_list(space);
