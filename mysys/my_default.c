@@ -83,6 +83,7 @@ my_bool my_getopt_is_args_separator(const char* arg)
 const char *my_defaults_file=0;
 const char *my_defaults_group_suffix=0;
 const char *my_defaults_extra_file=0;
+my_bool my_defaults_silent= 0;
 
 static char my_defaults_file_buffer[FN_REFLEN];
 static char my_defaults_extra_file_buffer[FN_REFLEN];
@@ -1034,7 +1035,8 @@ void my_print_default_files(const char *conf_file)
   const char **exts_to_use= have_ext ? empty_list : f_extensions;
   char name[FN_REFLEN], **ext;
 
-  puts("\nDefault options are read from the following files in the given order:");
+  if (!my_defaults_silent)
+    puts("\nDefault options are read from the following files in the given order:");
 
   if (dirname_length(conf_file))
     fputs(conf_file,stdout);
@@ -1065,7 +1067,12 @@ void my_print_default_files(const char *conf_file)
           end= convert_dirname(name, pos, NullS);
           if (name[0] == FN_HOMELIB)	/* Add . to filenames in home */
             *end++= '.';
-          strxmov(end, conf_file, *ext, " ", NullS);
+          end= strxmov(end, conf_file, *ext, NullS);
+          if (!my_defaults_silent)
+            *end++= ' ';
+          else
+            *end++= '\n';
+          *end= 0;
           fputs(name, stdout);
         }
       }
@@ -1073,7 +1080,8 @@ void my_print_default_files(const char *conf_file)
 
     free_root(&alloc, MYF(0));
   }
-  puts("");
+  if (!my_defaults_silent)
+    puts("");
 }
 
 void print_defaults(const char *conf_file, const char **groups)

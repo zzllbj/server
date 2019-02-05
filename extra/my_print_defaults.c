@@ -68,6 +68,9 @@ static struct my_option my_long_options[] =
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"help", '?', "Display this help message and exit.",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
+  {"print-default-files", 'd',
+   "Print defaults files that would be read and exit",
+   0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"verbose", 'v', "Increase the output level",
    0, 0, 0, GET_NO_ARG, NO_ARG, 0, 0, 0, 0, 0, 0},
   {"version", 'V', "Output version information and exit.",
@@ -84,7 +87,7 @@ static void cleanup_and_exit(int exit_code)
 
 static void version()
 {
-  printf("%s  Ver 1.7 for %s at %s\n",my_progname,SYSTEM_TYPE, MACHINE_TYPE);
+  printf("%s  Ver 1.8 for %s at %s\n",my_progname,SYSTEM_TYPE, MACHINE_TYPE);
 }
 
 
@@ -102,6 +105,12 @@ static void usage()
   cleanup_and_exit(0);
 }
 
+static void print_defaults_files() __attribute__ ((noreturn));
+static void print_defaults_files()
+{
+  my_print_default_files(config_file);
+  cleanup_and_exit(0);
+}
 
 static my_bool
 get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
@@ -111,6 +120,10 @@ get_one_option(int optid, const struct my_option *opt __attribute__((unused)),
     case 'c':
       opt_defaults_file_used= 1;
       break;
+    case 'd':
+      if (!verbose)
+        my_defaults_silent= 1;
+      print_defaults_files(config_file);
     case 'n':
       cleanup_and_exit(0);
     case 'I':
