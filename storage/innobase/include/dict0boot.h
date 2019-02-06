@@ -109,6 +109,14 @@ dict_is_sys_table(
 	table_id_t	id)		/*!< in: table id to check */
 	MY_ATTRIBUTE((warn_unused_result));
 
+/** Get the crypt status of all tablespace from dict hdr page.
+@return the value as ALL_ENCRYPTED, ALL_DECRYPTED, MIXED_STATE. */
+ib_uint32_t	dict_hdr_get_crypt_status();
+
+/** Set the crypt status of all tablespace in dict hdr page.
+@param[in]	status	status of all tablespace. */
+void dict_hdr_set_crypt_status(ib_uint32_t status);
+
 /* Space id and page no where the dictionary header resides */
 #define	DICT_HDR_SPACE		0	/* the SYSTEM tablespace */
 #define	DICT_HDR_PAGE_NO	FSP_DICT_HDR_PAGE_NO
@@ -130,7 +138,7 @@ dict_is_sys_table(
 #define DICT_HDR_TABLE_ID	8	/* The latest assigned table id */
 #define DICT_HDR_INDEX_ID	16	/* The latest assigned index id */
 #define DICT_HDR_MAX_SPACE_ID	24	/* The latest assigned space id,or 0*/
-#define DICT_HDR_MIX_ID_LOW	28	/* Obsolete,always DICT_HDR_FIRST_ID*/
+#define DICT_HDR_CRYPT_STATUS	28	/* Encryption status of all tablespace */
 #define DICT_HDR_TABLES		32	/* Root of SYS_TABLES clust index */
 #define DICT_HDR_TABLE_IDS	36	/* Root of SYS_TABLE_IDS sec index */
 #define DICT_HDR_COLUMNS	40	/* Root of SYS_COLUMNS clust index */

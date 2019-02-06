@@ -92,6 +92,9 @@ static ib_mutex_t crypt_stat_mutex;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
 
+/** Variable for maintaining global encryption status of all tablespace */
+UNIV_INTERN srv_crypt_status_t srv_crypt_space_status = MIXED_STATE;
+
 /***********************************************************************
 Check if a key needs rotation given a key_state
 @param[in]	crypt_data		Encryption information
@@ -921,7 +924,7 @@ fil_crypt_needs_rotation(
 
 	if (crypt_data->encryption == FIL_ENCRYPTION_DEFAULT
 	    && crypt_data->type == CRYPT_SCHEME_1
-	    && srv_encrypt_tables == 0 ) {
+	    && srv_encrypt_tables == 0) {
 		/* This is rotation encrypted => unencrypted */
 		return true;
 	}
@@ -930,6 +933,10 @@ fil_crypt_needs_rotation(
 	* only reencrypt if key is sufficiently old */
 	if (key_version + rotate_key_age < latest_key_version) {
 		return true;
+	}
+
+	if (rotate_key_age == 0) {
+		return false;
 	}
 
 	return false;
@@ -1434,6 +1441,17 @@ fil_crypt_return_iops(
 	fil_crypt_update_total_stat(state);
 }
 
+/** Verify whether both global encryption status variable and
+innodb_encrypt_tables are in encryption/decryption state.
+@retval true if srv_encrypt_space_status and innodb_encrypt_tables
+		both shows encryption/decryption state. */
+static bool fil_crypt_stable_state()
+{
+	return (srv_encrypt_tables && srv_crypt_space_status == ALL_ENCRYPTED)
+	       || (!srv_encrypt_tables
+		   && srv_crypt_space_status == ALL_DECRYPTED);
+}
+
 /***********************************************************************
 Search for a space needing rotation
 @param[in,out]		key_state		Key state
@@ -1466,6 +1484,17 @@ fil_crypt_find_space_to_rotate(
 			state->space->release();
 		}
 		state->space = NULL;
+	}
+
+	if (srv_fil_crypt_rotate_key_age == 0) {
+		mutex_enter(&fil_system.mutex);
+		bool is_stable = fil_crypt_stable_state();
+		mutex_exit(&fil_system.mutex);
+
+		if (is_stable) {
+			fil_crypt_return_iops(state);
+			return false;
+		}
 	}
 
 	state->space = fil_space_next(state->space);

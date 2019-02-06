@@ -164,9 +164,10 @@ dict_hdr_create(
 	mlog_write_ulint(dict_header + DICT_HDR_MAX_SPACE_ID,
 			 0, MLOG_4BYTES, mtr);
 
-	/* Obsolete, but we must initialize it anyway. */
-	mlog_write_ulint(dict_header + DICT_HDR_MIX_ID_LOW,
-			 DICT_HDR_FIRST_ID, MLOG_4BYTES, mtr);
+	mlog_write_ulint(dict_header + DICT_HDR_CRYPT_STATUS,
+			 MIXED_STATE, MLOG_4BYTES, mtr);
+
+	compile_time_assert(DICT_HDR_FIRST_ID == MIXED_STATE);
 
 	/* Create the B-tree roots for the clustered indexes of the basic
 	system tables */
@@ -520,4 +521,30 @@ dict_create(void)
 	}
 
 	return(err);
+}
+
+/** Get the encrypt status of all tablespace from dict header page.
+@return the value as ALL_ENCRYPTED, ALL_DECRYPTED and MIXED STATE. */
+ib_uint32_t dict_hdr_get_crypt_status()
+{
+	mtr_t	mtr;
+	mtr_start(&mtr);
+	dict_hdr_t*	dict_hdr = dict_hdr_get(&mtr);
+	ib_uint32_t	status = mach_read_from_4(
+			dict_hdr + DICT_HDR_CRYPT_STATUS);
+	mtr_commit(&mtr);
+
+	return status;
+}
+
+/** Set the encrypt status of all tablespace in dict header page.
+@param[in]	status	status of all tablespace. */
+void dict_hdr_set_crypt_status(ib_uint32_t status)
+{
+	mtr_t	mtr;
+	mtr_start(&mtr);
+	dict_hdr_t*	dict_hdr = dict_hdr_get(&mtr);
+	mlog_write_ulint(dict_hdr + DICT_HDR_CRYPT_STATUS, status,
+			 MLOG_4BYTES, &mtr);
+	mtr_commit(&mtr);
 }

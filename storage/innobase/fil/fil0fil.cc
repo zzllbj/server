@@ -5142,6 +5142,52 @@ fil_space_set_punch_hole(
 	node->space->punch_hole = val;
 }
 
+/** Set the crypt status of all tablespace.
+@param[in]	encrypted	whether tablespace added in
+				encrypted list */
+static void fil_space_set_crypt_status(bool encrypted)
+{
+	if (!mysqld_server_started || srv_read_only_mode) {
+		return;
+	}
+
+	ut_ad(mutex_own(&fil_system.mutex));
+	ib_uint32_t	status = srv_crypt_space_status;
+
+	if (status == ALL_ENCRYPTED) {
+		if (!encrypted) {
+			srv_crypt_space_status = MIXED_STATE;
+		}
+	} else if (status == ALL_DECRYPTED) {
+		if (encrypted) {
+			srv_crypt_space_status = MIXED_STATE;
+		}
+	} else {
+		ulint encrypted_space_len = UT_LIST_GET_LEN(
+				fil_system.encrypted_spaces);
+		ulint unencrypted_space_len = UT_LIST_GET_LEN(
+				fil_system.unencrypted_spaces);
+		ulint total_space_len = UT_LIST_GET_LEN(fil_system.space_list);
+
+		/* In space list, InnoDB adds redo log and
+		fil_system.temp_space. So while checking for the state,
+		remove these two tablespace. */
+		if (total_space_len == encrypted_space_len + 2) {
+			srv_crypt_space_status = ALL_ENCRYPTED;
+		} else if (total_space_len == unencrypted_space_len + 2) {
+			srv_crypt_space_status = ALL_DECRYPTED;
+		}
+	}
+
+	if (status == srv_crypt_space_status) {
+		return;
+	}
+
+	mutex_exit(&fil_system.mutex);
+	dict_hdr_set_crypt_status(srv_crypt_space_status);
+	mutex_enter(&fil_system.mutex);
+}
+
 /** Checks that this tablespace in a list of unflushed tablespaces.
 @return true if in a list */
 bool fil_space_t::is_in_unflushed_spaces() const {
@@ -5196,6 +5242,7 @@ static void fil_space_add_unencrypted_list(fil_space_t* space)
 	}
 
 	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
+	fil_space_set_crypt_status(false);
 }
 
 /** Add the space to the encrypted list.
@@ -5211,6 +5258,7 @@ static void fil_space_add_encrypted_list(fil_space_t* space)
 	}
 
 	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
+	fil_space_set_crypt_status(true);
 }
 
 /** Add the space to encrypted or unencrypted list. */
