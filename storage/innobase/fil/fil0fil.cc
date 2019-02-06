@@ -511,6 +511,14 @@ bool fil_node_t::read_page0(bool first)
 	if (!space->crypt_data) {
 		space->crypt_data = fil_space_read_crypt_data(page_size, page);
 	}
+
+	if (first
+	    || (space->purpose == FIL_TYPE_TABLESPACE
+		&& this == UT_LIST_GET_FIRST(space->chain)
+		&& srv_startup_is_before_trx_rollback_phase)) {
+		space->add_to_encrypt_or_unencrypt_list();
+	}
+
 	ut_free(buf2);
 
 	if (!fsp_flags_is_valid(flags, space->id)) {
@@ -1160,6 +1168,10 @@ fil_space_detach(
 {
 	ut_ad(mutex_own(&fil_system.mutex));
 
+	if (space->purpose == FIL_TYPE_TABLESPACE) {
+		space->remove_from_encrypt_or_unencrypt_list();
+	}
+
 	HASH_DELETE(fil_space_t, hash, fil_system.spaces, space->id, space);
 
 	if (space->is_in_unflushed_spaces()) {
@@ -1167,11 +1179,6 @@ fil_space_detach(
 		ut_ad(!fil_buffering_disabled(space));
 
 		UT_LIST_REMOVE(fil_system.unflushed_spaces, space);
-	}
-
-	if (space->is_in_rotation_list()) {
-
-		UT_LIST_REMOVE(fil_system.rotation_list, space);
 	}
 
 	UT_LIST_REMOVE(fil_system.space_list, space);
@@ -1362,6 +1369,10 @@ fil_space_create(
 
 	rw_lock_create(fil_space_latch_key, &space->latch, SYNC_FSP);
 
+	if (crypt_data != NULL) {
+		space->add_to_encrypt_or_unencrypt_list();
+	}
+
 	if (space->purpose == FIL_TYPE_TEMPORARY) {
 		/* SysTablespace::open_or_create() would pass
 		size!=0 to fil_space_t::add(), so first_time_open
@@ -1381,20 +1392,7 @@ fil_space_create(
 		fil_system.max_assigned_id = id;
 	}
 
-	/* Inform key rotation that there could be something
-	to do */
-	if (purpose == FIL_TYPE_TABLESPACE
-	    && !srv_fil_crypt_rotate_key_age && fil_crypt_threads_event &&
-	    (mode == FIL_ENCRYPTION_ON || mode == FIL_ENCRYPTION_OFF ||
-		    srv_encrypt_tables)) {
-		/* Key rotation is not enabled, need to inform background
-		encryption threads. */
-		UT_LIST_ADD_LAST(fil_system.rotation_list, space);
-		mutex_exit(&fil_system.mutex);
-		os_event_set(fil_crypt_threads_event);
-	} else {
-		mutex_exit(&fil_system.mutex);
-	}
+	mutex_exit(&fil_system.mutex);
 
 	return(space);
 }
@@ -3126,6 +3124,14 @@ err_exit:
 
 		file->block_size = block_size;
 		space->punch_hole = punch_hole;
+
+		if (space->purpose == FIL_TYPE_TABLESPACE) {
+			mutex_enter(&fil_system.mutex);
+			if (!crypt_data) {
+				space->add_to_encrypt_or_unencrypt_list();
+			}
+			mutex_exit(&fil_system.mutex);
+		}
 
 		*err = DB_SUCCESS;
 	}
@@ -5063,86 +5069,6 @@ fil_space_next(fil_space_t* prev_space)
 	return(space);
 }
 
-/**
-Remove space from key rotation list if there are no more
-pending operations.
-@param[in,out]	space		Tablespace */
-static
-void
-fil_space_remove_from_keyrotation(fil_space_t* space)
-{
-	ut_ad(mutex_own(&fil_system.mutex));
-	ut_ad(space);
-
-	if (!space->referenced() && space->is_in_rotation_list()) {
-		ut_a(UT_LIST_GET_LEN(fil_system.rotation_list) > 0);
-		UT_LIST_REMOVE(fil_system.rotation_list, space);
-	}
-}
-
-
-/** Return the next fil_space_t from key rotation list.
-Once started, the caller must keep calling this until it returns NULL.
-fil_space_t::acquire() and fil_space_t::release() are invoked here which
-blocks a concurrent operation from dropping the tablespace.
-@param[in]	prev_space	Pointer to the previous fil_space_t.
-If NULL, use the first fil_space_t on fil_system.space_list.
-@return pointer to the next fil_space_t.
-@retval NULL if this was the last*/
-fil_space_t*
-fil_space_keyrotate_next(
-	fil_space_t*	prev_space)
-{
-	fil_space_t* space = prev_space;
-	fil_space_t* old   = NULL;
-
-	mutex_enter(&fil_system.mutex);
-
-	if (UT_LIST_GET_LEN(fil_system.rotation_list) == 0) {
-		if (space) {
-			space->release();
-			fil_space_remove_from_keyrotation(space);
-		}
-		mutex_exit(&fil_system.mutex);
-		return(NULL);
-	}
-
-	if (prev_space == NULL) {
-		space = UT_LIST_GET_FIRST(fil_system.rotation_list);
-
-		/* We can trust that space is not NULL because we
-		checked list length above */
-	} else {
-		/* Move on to the next fil_space_t */
-		space->release();
-
-		old = space;
-		space = UT_LIST_GET_NEXT(rotation_list, space);
-
-		fil_space_remove_from_keyrotation(old);
-	}
-
-	/* Skip spaces that are being created by fil_ibd_create(),
-	or dropped. Note that rotation_list contains only
-	space->purpose == FIL_TYPE_TABLESPACE. */
-	while (space != NULL
-	       && (UT_LIST_GET_LEN(space->chain) == 0
-		   || space->is_stopping())) {
-
-		old = space;
-		space = UT_LIST_GET_NEXT(rotation_list, space);
-		fil_space_remove_from_keyrotation(old);
-	}
-
-	if (space != NULL) {
-		space->acquire();
-	}
-
-	mutex_exit(&fil_system.mutex);
-
-	return(space);
-}
-
 /** Determine the block size of the data file.
 @param[in]	space		tablespace
 @param[in]	offset		page number
@@ -5225,11 +5151,95 @@ bool fil_space_t::is_in_unflushed_spaces() const {
 	       || unflushed_spaces.next || unflushed_spaces.prev;
 }
 
-/** Checks that this tablespace needs key rotation.
-@return true if in a rotation list */
-bool fil_space_t::is_in_rotation_list() const {
+/** Checks that this tablespace in a list of encrypted tablespaces.
+@return true if in a encrypted list */
+bool fil_space_t::is_in_encrypted_spaces() {
 	ut_ad(mutex_own(&fil_system.mutex));
 
-	return fil_system.rotation_list.start == this || rotation_list.next
-	       || rotation_list.prev;
+	return fil_system.encrypted_spaces.start == this
+	       || encrypted_spaces.next || encrypted_spaces.prev;
+}
+
+/** Checks that this tablespace in a list of unencrypted tablespaces.
+@return true if in a unencrypted list */
+bool fil_space_t::is_in_unencrypted_spaces() {
+	ut_ad(mutex_own(&fil_system.mutex));
+
+	return fil_system.unencrypted_spaces.start == this
+	       || unencrypted_spaces.next || unencrypted_spaces.prev;
+}
+
+/** Remove the space from encrypted list.
+@param[in]	space	space to be removed from encrypted list. */
+static void fil_space_remove_from_encrypted_list(fil_space_t* space)
+{
+	UT_LIST_REMOVE(fil_system.encrypted_spaces, space);
+}
+
+/** Remove the space from unencrypted list.
+@param[in]	space	space to be removed from unencrypted list. */
+static void fil_space_remove_from_unencrypted_list(fil_space_t* space)
+{
+	UT_LIST_REMOVE(fil_system.unencrypted_spaces, space);
+}
+
+/** Add the space to the unencrypted list.
+@param[in]	space	space to be added in unencrypted list. */
+static void fil_space_add_unencrypted_list(fil_space_t* space)
+{
+	if (space->is_in_unencrypted_spaces()) {
+		return;
+	}
+
+	if (space->is_in_encrypted_spaces()) {
+		fil_space_remove_from_encrypted_list(space);
+	}
+
+	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
+}
+
+/** Add the space to the encrypted list.
+@param[in]	space	space to be added in encrypted list. */
+static void fil_space_add_encrypted_list(fil_space_t* space)
+{
+	if (space->is_in_encrypted_spaces()) {
+		return;
+	}
+
+	if (space->is_in_unencrypted_spaces()) {
+		fil_space_remove_from_unencrypted_list(space);
+	}
+
+	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
+}
+
+/** Add the space to encrypted or unencrypted list. */
+void fil_space_t::add_to_encrypt_or_unencrypt_list()
+{
+	if (srv_operation != SRV_OPERATION_NORMAL) {
+		return;
+	}
+
+	if (crypt_data == NULL
+	    || crypt_data->min_key_version == 0) {
+		fil_space_add_unencrypted_list(this);
+	} else {
+		fil_space_add_encrypted_list(this);
+	}
+}
+
+/** Remove the space from encrypted or unencrypted list. */
+void fil_space_t::remove_from_encrypt_or_unencrypt_list()
+{
+	if (srv_operation != SRV_OPERATION_NORMAL) {
+		return;
+	}
+
+	if (is_in_encrypted_spaces()) {
+		fil_space_remove_from_encrypted_list(this);
+	} else if (is_in_unencrypted_spaces()) {
+		fil_space_remove_from_unencrypted_list(this);
+	} else {
+		ut_ad(size == 0);
+	}
 }

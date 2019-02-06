@@ -444,6 +444,9 @@ fil_space_set_crypt_data(
 	} else {
 		space->crypt_data = crypt_data;
 		ret_crypt_data = space->crypt_data;
+		mutex_enter(&fil_system.mutex);
+		space->add_to_encrypt_or_unencrypt_list();
+		mutex_exit(&fil_system.mutex);
 	}
 
 	if (free_crypt_data != NULL) {
@@ -1465,14 +1468,7 @@ fil_crypt_find_space_to_rotate(
 		state->space = NULL;
 	}
 
-	/* If key rotation is enabled (default) we iterate all tablespaces.
-	If key rotation is not enabled we iterate only the tablespaces
-	added to keyrotation list. */
-	if (srv_fil_crypt_rotate_key_age) {
-		state->space = fil_space_next(state->space);
-	} else {
-		state->space = fil_space_keyrotate_next(state->space);
-	}
+	state->space = fil_space_next(state->space);
 
 	while (!state->should_shutdown() && state->space) {
 		/* If there is no crypt data and we have not yet read
@@ -1490,11 +1486,7 @@ fil_crypt_find_space_to_rotate(
 			return true;
 		}
 
-		if (srv_fil_crypt_rotate_key_age) {
-			state->space = fil_space_next(state->space);
-		} else {
-			state->space = fil_space_keyrotate_next(state->space);
-		}
+		state->space = fil_space_next(state->space);
 	}
 
 	/* if we didn't find any space return iops */
@@ -2028,6 +2020,12 @@ fil_crypt_flush_space(
 	}
 
 	mtr.commit();
+
+	if (crypt_data != NULL) {
+		mutex_enter(&fil_system.mutex);
+		space->add_to_encrypt_or_unencrypt_list();
+		mutex_exit(&fil_system.mutex);
+	}
 }
 
 /***********************************************************************

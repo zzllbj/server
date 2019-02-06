@@ -156,11 +156,19 @@ struct fil_space_t {
 	bool is_in_unflushed_spaces() const;
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
-	/** other tablespaces needing key rotation */
-	UT_LIST_NODE_T(fil_space_t) rotation_list;
-	/** Checks that this tablespace needs key rotation.
-	@return true if in a rotation list */
-	bool is_in_rotation_list() const;
+	/** List of all encrypted spaces. Protected by fil_system->mutex. */
+	UT_LIST_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** List of all unencrypted spaces. Protected by fil_system->mutex. */
+	UT_LIST_NODE_T(fil_space_t) unencrypted_spaces;
+
+	/** Checks that this tablespace in a list of encrypted tablespaces.
+	@return true if in a encrypted list */
+	bool is_in_encrypted_spaces();
+
+	/** Checks that this tablespace in a list of unencrypted tablespaces.
+	@return true if in a unencrypted list */
+	bool is_in_unencrypted_spaces();
 
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
@@ -242,6 +250,10 @@ struct fil_space_t {
 	bool open();
 	/** Close each file. Only invoked on fil_system.temp_space. */
 	void close();
+	/** Add the space to encrypted or unencrypted list. */
+	void add_to_encrypt_or_unencrypt_list();
+	/** Remove the space from encrypted or unencrypted list. */
+	void remove_from_encrypt_or_unencrypt_list();
 
 	/** Acquire a tablespace reference. */
 	void acquire() { n_pending_ops++; }
@@ -542,9 +554,10 @@ struct fil_system_t {
   {
     UT_LIST_INIT(LRU, &fil_node_t::LRU);
     UT_LIST_INIT(space_list, &fil_space_t::space_list);
-    UT_LIST_INIT(rotation_list, &fil_space_t::rotation_list);
     UT_LIST_INIT(unflushed_spaces, &fil_space_t::unflushed_spaces);
     UT_LIST_INIT(named_spaces, &fil_space_t::named_spaces);
+    UT_LIST_INIT(encrypted_spaces, &fil_space_t::encrypted_spaces);
+    UT_LIST_INIT(unencrypted_spaces, &fil_space_t::unencrypted_spaces);
   }
 
   bool is_initialised() const { return m_initialised; }
@@ -600,9 +613,13 @@ public:
 					record has been written since
 					the latest redo log checkpoint.
 					Protected only by log_sys.mutex. */
-	UT_LIST_BASE_NODE_T(fil_space_t) rotation_list;
-					/*!< list of all file spaces needing
-					key rotation.*/
+	/** list of all encrypted spaces
+	Protected by fil_system->mutex. */
+	UT_LIST_BASE_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** list of all unencrypted spaces
+	Protected by fil_system->mutex. */
+	UT_LIST_BASE_NODE_T(fil_space_t) unencrypted_spaces;
 
 	bool		space_id_reuse_warned;
 					/*!< whether fil_space_create()

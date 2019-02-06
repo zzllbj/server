@@ -668,6 +668,7 @@ static bool srv_undo_tablespace_open(const char* name, ulint space_id,
 	if (create_new_db) {
 		space->size = file->size = ulint(size >> srv_page_size_shift);
 		space->size_in_header = SRV_UNDO_TABLESPACE_SIZE_IN_PAGES;
+		space->add_to_encrypt_or_unencrypt_list();
 	} else {
 		success = file->read_page0(true);
 		if (!success) {
