@@ -5241,7 +5241,7 @@ static void fil_space_add_unencrypted_list(fil_space_t* space)
 		fil_space_remove_from_encrypted_list(space);
 	}
 
-	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
+	UT_LIST_ADD_LAST(fil_system.unencrypted_spaces, space);
 	fil_space_set_crypt_status(false);
 }
 

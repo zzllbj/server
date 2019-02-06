@@ -8428,7 +8428,7 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
 	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
 	 STRUCT_FLD(value,		0),
-	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
@@ -8437,7 +8437,7 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
 	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
 	 STRUCT_FLD(value,		0),
-	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
@@ -8446,7 +8446,7 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
 	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
 	 STRUCT_FLD(value,		0),
-	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
@@ -8455,7 +8455,7 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
 	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
 	 STRUCT_FLD(value,		0),
-	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
@@ -8482,7 +8482,7 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(field_length,	MY_INT32_NUM_DECIMAL_DIGITS),
 	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
 	 STRUCT_FLD(value,		0),
-	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
@@ -8491,7 +8491,7 @@ static ST_FIELD_INFO	innodb_tablespaces_encryption_fields_info[] =
 	 STRUCT_FLD(field_length,	1),
 	 STRUCT_FLD(field_type,		MYSQL_TYPE_LONG),
 	 STRUCT_FLD(value,		0),
-	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED),
+	 STRUCT_FLD(field_flags,	MY_I_S_UNSIGNED | MY_I_S_MAYBE_NULL),
 	 STRUCT_FLD(old_name,		""),
 	 STRUCT_FLD(open_method,	SKIP_OPEN_TABLE)},
 
@@ -8519,18 +8519,33 @@ i_s_dict_fill_tablespaces_encryption(
 
 	fields = table_to_fill->field;
 
-	fil_space_crypt_get_status(space, &status);
-
-	/* If tablespace id does not match, we did not find
-	encryption information for this tablespace. */
-	if (!space->crypt_data || space->id != status.space) {
-		goto skip;
-	}
-
 	OK(fields[TABLESPACES_ENCRYPTION_SPACE]->store(space->id, true));
 
 	OK(field_store_string(fields[TABLESPACES_ENCRYPTION_NAME],
 			      space->name));
+
+	if (space->size == 0 && space->crypt_data == NULL) {
+		fields[TABLESPACES_ENCRYPTION_ENCRYPTION_SCHEME]->set_null();
+		fields[TABLESPACES_ENCRYPTION_MIN_KEY_VERSION]->set_null();
+		fields[TABLESPACES_ENCRYPTION_KEYSERVER_REQUESTS]->set_null();
+		fields[TABLESPACES_ENCRYPTION_CURRENT_KEY_VERSION]->set_null();
+		fields[TABLESPACES_ENCRYPTION_CURRENT_KEY_ID]->set_null();
+		fields[TABLESPACES_ENCRYPTION_ROTATING_OR_FLUSHING]->set_null();
+		fields[TABLESPACES_ENCRYPTION_KEY_ROTATION_PAGE_NUMBER]
+			->set_null();
+		fields[TABLESPACES_ENCRYPTION_KEY_ROTATION_MAX_PAGE_NUMBER]
+			->set_null();
+		goto fill;
+	}
+
+	fil_space_crypt_get_status(space, &status);
+
+	fields[TABLESPACES_ENCRYPTION_ENCRYPTION_SCHEME]->set_notnull();
+	fields[TABLESPACES_ENCRYPTION_MIN_KEY_VERSION]->set_notnull();
+	fields[TABLESPACES_ENCRYPTION_KEYSERVER_REQUESTS]->set_notnull();
+	fields[TABLESPACES_ENCRYPTION_CURRENT_KEY_VERSION]->set_notnull();
+	fields[TABLESPACES_ENCRYPTION_CURRENT_KEY_ID]->set_notnull();
+	fields[TABLESPACES_ENCRYPTION_ROTATING_OR_FLUSHING]->set_notnull();
 
 	OK(fields[TABLESPACES_ENCRYPTION_ENCRYPTION_SCHEME]->store(
 		   status.scheme, true));
@@ -8559,11 +8574,10 @@ i_s_dict_fill_tablespaces_encryption(
 			->set_null();
 	}
 
-	OK(schema_table_store_record(thd, table_to_fill));
-
-skip:
-	DBUG_RETURN(0);
+fill:
+	DBUG_RETURN(schema_table_store_record(thd, table_to_fill));
 }
+
 /*******************************************************************//**
 Function to populate INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION table.
 Loop through each record in TABLESPACES_ENCRYPTION, and extract the column

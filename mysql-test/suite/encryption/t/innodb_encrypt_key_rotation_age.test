@@ -32,7 +32,7 @@ let $restart_parameters= --innodb_encryption_threads=1 --innodb_encryption_rotat
 
 create table t3 (f1 int not null)engine=innodb;
 
-SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+select count(*) from mysql.transaction_registry;
 
 --echo # Wait until encryption threads have encrypted all tablespaces
 
@@ -40,6 +40,8 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 --let $wait_timeout= 600
 --let $wait_condition=SELECT COUNT(*) >= $tables_count FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 --source include/wait_condition.inc
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION is NULL;
 
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 
