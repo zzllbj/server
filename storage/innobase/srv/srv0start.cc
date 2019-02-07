@@ -2059,7 +2059,7 @@ files_checked:
 		} else if (srv_read_only_mode) {
 			/* Leave the redo log alone. */
 		} else {
-			dict_hdr_crypt_status_update();
+			dict_hdr_crypt_status_update(fil_system.crypt_status);
 
 			if (srv_log_file_size_requested == srv_log_file_size
 			    && srv_n_log_files_found == srv_n_log_files

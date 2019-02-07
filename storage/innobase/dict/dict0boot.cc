@@ -535,13 +535,15 @@ dict_create(void)
 	return(err);
 }
 
-/** Update the crypt status of all tablespaces. */
-void dict_hdr_crypt_status_update()
+/** Update DICT_HDR_CRYPT_STATUS. */
+void dict_hdr_crypt_status_update(uint32_t status)
 {
+	ut_ad(status == fil_system_t::CRYPT_ENCRYPTED
+	      || status == fil_system_t::CRYPT_DECRYPTED
+	      || status == fil_system_t::CRYPT_MIXED);
 	mtr_t mtr;
 	mtr.start();
 	byte* s = dict_hdr_get(&mtr) + DICT_HDR_CRYPT_STATUS;
-	uint32_t status = fil_system.crypt_status;
 	if (mach_read_from_4(s) != status) {
 		mlog_write_ulint(s, status, MLOG_4BYTES, &mtr);
 	}

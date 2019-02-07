@@ -109,8 +109,8 @@ dict_is_sys_table(
 	table_id_t	id)		/*!< in: table id to check */
 	MY_ATTRIBUTE((warn_unused_result));
 
-/** Update the crypt status of all tablespaces. */
-void dict_hdr_crypt_status_update();
+/** Update DICT_HDR_CRYPT_STATUS. */
+void dict_hdr_crypt_status_update(uint32_t status);
 
 /* Space id and page no where the dictionary header resides */
 #define	DICT_HDR_SPACE		0	/* the SYSTEM tablespace */

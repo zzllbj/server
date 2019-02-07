@@ -5127,7 +5127,7 @@ inline void fil_system_t::crypt_enlist(bool encrypted)
 
 	if (!srv_startup_is_before_trx_rollback_phase) {
 		mutex_exit(&mutex);
-		dict_hdr_crypt_status_update();
+		dict_hdr_crypt_status_update(status);
 		mutex_enter(&mutex);
 	}
 }
