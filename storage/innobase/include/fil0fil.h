@@ -250,9 +250,9 @@ struct fil_space_t {
 	/** Close each file. Only invoked on fil_system.temp_space. */
 	void close();
 	/** Add the space to encrypted or unencrypted list. */
-	void add_to_encrypt_or_unencrypt_list();
+	void crypt_enlist();
 	/** Remove the space from encrypted or unencrypted list. */
-	void remove_from_encrypt_or_unencrypt_list();
+	inline void crypt_delist();
 
 	/** Acquire a tablespace reference. */
 	void acquire() { n_pending_ops++; }

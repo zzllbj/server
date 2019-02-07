@@ -528,7 +528,7 @@ bool fil_node_t::read_page0(bool first)
 	}
 
 	if (first) {
-		space->add_to_encrypt_or_unencrypt_list();
+		space->crypt_enlist();
 	}
 
 	ut_free(buf2);
@@ -1162,7 +1162,7 @@ fil_space_detach(
 	ut_ad(mutex_own(&fil_system.mutex));
 
 	if (space->purpose == FIL_TYPE_TABLESPACE) {
-		space->remove_from_encrypt_or_unencrypt_list();
+		space->crypt_delist();
 	}
 
 	HASH_DELETE(fil_space_t, hash, fil_system.spaces, space->id, space);
@@ -1380,7 +1380,7 @@ fil_space_create(
 	}
 
 	if (crypt_data) {
-		space->add_to_encrypt_or_unencrypt_list();
+		space->crypt_enlist();
 	}
 
 	mutex_exit(&fil_system.mutex);
@@ -3087,11 +3087,9 @@ err_exit:
 		file->block_size = block_size;
 		space->punch_hole = punch_hole;
 
-		if (space->purpose == FIL_TYPE_TABLESPACE) {
+		if (space->purpose == FIL_TYPE_TABLESPACE && !crypt_data) {
 			mutex_enter(&fil_system.mutex);
-			if (!crypt_data) {
-				space->add_to_encrypt_or_unencrypt_list();
-			}
+			space->crypt_enlist();
 			mutex_exit(&fil_system.mutex);
 		}
 
@@ -5208,8 +5206,10 @@ static void fil_space_add_encrypted_list(fil_space_t* space)
 }
 
 /** Add the space to encrypted or unencrypted list. */
-void fil_space_t::add_to_encrypt_or_unencrypt_list()
+void fil_space_t::crypt_enlist()
 {
+	ut_ad(mutex_own(&fil_system.mutex));
+
 	if (srv_operation != SRV_OPERATION_NORMAL) {
 		return;
 	}
@@ -5223,8 +5223,10 @@ void fil_space_t::add_to_encrypt_or_unencrypt_list()
 }
 
 /** Remove the space from encrypted or unencrypted list. */
-void fil_space_t::remove_from_encrypt_or_unencrypt_list()
+inline void fil_space_t::crypt_delist()
 {
+	ut_ad(mutex_own(&fil_system.mutex));
+
 	if (srv_operation != SRV_OPERATION_NORMAL) {
 		return;
 	}

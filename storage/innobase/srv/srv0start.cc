@@ -668,7 +668,7 @@ static bool srv_undo_tablespace_open(const char* name, ulint space_id,
 	if (create_new_db) {
 		space->size = file->size = ulint(size >> srv_page_size_shift);
 		space->size_in_header = SRV_UNDO_TABLESPACE_SIZE_IN_PAGES;
-		space->add_to_encrypt_or_unencrypt_list();
+		space->crypt_enlist();
 	} else {
 		success = file->read_page0(true);
 		if (!success) {
@@ -1631,7 +1631,7 @@ dberr_t srv_start(bool create_new_db)
 	}
 
 	mutex_enter(&fil_system.mutex);
-	fil_system.sys_space->add_to_encrypt_or_unencrypt_list();
+	fil_system.sys_space->crypt_enlist();
 	mutex_exit(&fil_system.mutex);
 
 	dirnamelen = strlen(srv_log_group_home_dir);

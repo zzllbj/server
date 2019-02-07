@@ -443,11 +443,11 @@ fil_space_set_crypt_data(
 		ret_crypt_data = space->crypt_data;
 		free_crypt_data = crypt_data;
 	} else {
-		space->crypt_data = crypt_data;
-		ret_crypt_data = space->crypt_data;
 		mutex_enter(&fil_system.mutex);
-		space->add_to_encrypt_or_unencrypt_list();
+		space->crypt_data = crypt_data;
+		space->crypt_enlist();
 		mutex_exit(&fil_system.mutex);
+		ret_crypt_data = crypt_data;
 	}
 
 	if (free_crypt_data != NULL) {
@@ -2047,7 +2047,7 @@ fil_crypt_flush_space(
 
 	if (crypt_data != NULL) {
 		mutex_enter(&fil_system.mutex);
-		space->add_to_encrypt_or_unencrypt_list();
+		space->crypt_enlist();
 		mutex_exit(&fil_system.mutex);
 	}
 }
