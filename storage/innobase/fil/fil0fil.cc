@@ -5132,33 +5132,6 @@ inline void fil_system_t::crypt_enlist(bool encrypted)
 	}
 }
 
-/** Checks that this tablespace in a list of unflushed tablespaces.
-@return true if in a list */
-bool fil_space_t::is_in_unflushed_spaces() const {
-	ut_ad(mutex_own(&fil_system.mutex));
-
-	return fil_system.unflushed_spaces.start == this
-	       || unflushed_spaces.next || unflushed_spaces.prev;
-}
-
-/** Checks that this tablespace in a list of encrypted tablespaces.
-@return true if in a encrypted list */
-bool fil_space_t::is_in_encrypted_spaces() {
-	ut_ad(mutex_own(&fil_system.mutex));
-
-	return fil_system.encrypted_spaces.start == this
-	       || encrypted_spaces.next || encrypted_spaces.prev;
-}
-
-/** Checks that this tablespace in a list of unencrypted tablespaces.
-@return true if in a unencrypted list */
-bool fil_space_t::is_in_unencrypted_spaces() {
-	ut_ad(mutex_own(&fil_system.mutex));
-
-	return fil_system.unencrypted_spaces.start == this
-	       || unencrypted_spaces.next || unencrypted_spaces.prev;
-}
-
 /** Remove the space from encrypted list.
 @param[in]	space	space to be removed from encrypted list. */
 static void fil_space_remove_from_encrypted_list(fil_space_t* space)

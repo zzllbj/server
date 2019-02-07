@@ -150,9 +150,6 @@ struct fil_space_t {
 	UT_LIST_NODE_T(fil_space_t) named_spaces;
 				/*!< list of spaces for which MLOG_FILE_NAME
 				records have been issued */
-	/** Checks that this tablespace in a list of unflushed tablespaces.
-	@return true if in a list */
-	bool is_in_unflushed_spaces() const;
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
 	/** List of all encrypted spaces. Protected by fil_system->mutex. */
@@ -160,14 +157,6 @@ struct fil_space_t {
 
 	/** List of all unencrypted spaces. Protected by fil_system->mutex. */
 	UT_LIST_NODE_T(fil_space_t) unencrypted_spaces;
-
-	/** Checks that this tablespace in a list of encrypted tablespaces.
-	@return true if in a encrypted list */
-	bool is_in_encrypted_spaces();
-
-	/** Checks that this tablespace in a list of unencrypted tablespaces.
-	@return true if in a unencrypted list */
-	bool is_in_unencrypted_spaces();
 
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
@@ -253,6 +242,13 @@ struct fil_space_t {
 	void crypt_enlist();
 	/** Remove the space from encrypted or unencrypted list. */
 	inline void crypt_delist();
+
+	/** @return whether this is in fil_system.unflushed_spaces */
+	inline bool is_in_unflushed_spaces() const;
+	/** @return whether this is in fil_system.encrypted_spaces */
+	inline bool is_in_encrypted_spaces() const;
+	/** @return whether this is in fil_system.unencrypted_spaces */
+	inline bool is_in_unencrypted_spaces() const;
 
 	/** Acquire a tablespace reference. */
 	void acquire() { n_pending_ops++; }
@@ -674,6 +670,30 @@ public:
 
 /** The tablespace memory cache. */
 extern fil_system_t	fil_system;
+
+/** @return whether this is in fil_system.unflushed_spaces */
+inline bool fil_space_t::is_in_unflushed_spaces() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.unflushed_spaces.start == this
+		|| unflushed_spaces.next || unflushed_spaces.prev;
+}
+
+/** @return whether this is in fil_system.encrypted_spaces */
+inline bool fil_space_t::is_in_encrypted_spaces() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.encrypted_spaces.start == this
+		|| encrypted_spaces.next || encrypted_spaces.prev;
+}
+
+/** @return whether this is in fil_system.unencrypted_spaces */
+inline bool fil_space_t::is_in_unencrypted_spaces() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.unencrypted_spaces.start == this
+		|| unencrypted_spaces.next || unencrypted_spaces.prev;
+}
 
 #include "fil0crypt.h"
 
