@@ -250,13 +250,20 @@ struct fil_space_t {
 	/** @return whether this is in fil_system.unencrypted_spaces */
 	inline bool is_in_unencrypted_spaces() const;
 
+private:
 	/** Remove this from fil_system.encrypted_spaces if listed.
 	@return whether this tablespace was listed and removed */
 	inline bool remove_if_in_encrypted_spaces();
 	/** Remove this from fil_system.unencrypted_spaces if listed.
 	@return whether this tablespace was listed and removed */
 	inline bool remove_if_in_unencrypted_spaces();
-
+	/** Add this to fil_system.encrypted_spaces if not listed.
+	@return whether we added this tablespace */
+	inline bool add_if_not_in_encrypted_spaces();
+	/** Remove this from fil_system.unencrypted_spaces if listed.
+	@return whether we added this tablespace */
+	inline bool add_if_not_in_unencrypted_spaces();
+public:
 	/** Acquire a tablespace reference. */
 	void acquire() { n_pending_ops++; }
 	/** Release a tablespace reference. */
@@ -718,6 +725,24 @@ inline bool fil_space_t::remove_if_in_unencrypted_spaces()
 	bool remove = is_in_unencrypted_spaces();
 	if (remove) UT_LIST_REMOVE(fil_system.unencrypted_spaces, this);
 	return remove;
+}
+
+/** Add this to fil_system.encrypted_spaces if not listed.
+@return whether we added this tablespace */
+inline bool fil_space_t::add_if_not_in_encrypted_spaces()
+{
+	bool add = !is_in_encrypted_spaces();
+	if (add) UT_LIST_ADD_LAST(fil_system.encrypted_spaces, this);
+	return add;
+}
+
+/** Remove this from fil_system.unencrypted_spaces if listed.
+@return whether we added this tablespace */
+inline bool fil_space_t::add_if_not_in_unencrypted_spaces()
+{
+	bool add = !is_in_unencrypted_spaces();
+	if (add) UT_LIST_ADD_LAST(fil_system.unencrypted_spaces, this);
+	return add;
 }
 
 #include "fil0crypt.h"

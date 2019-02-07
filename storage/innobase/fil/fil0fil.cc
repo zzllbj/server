@@ -5132,33 +5132,6 @@ inline void fil_system_t::crypt_enlist(bool encrypted)
 	}
 }
 
-/** Add the space to the unencrypted list.
-@param[in]	space	space to be added in unencrypted list. */
-static void fil_space_add_unencrypted_list(fil_space_t* space)
-{
-	if (space->is_in_unencrypted_spaces()) {
-		return;
-	}
-
-	space->remove_if_in_encrypted_spaces();
-
-	UT_LIST_ADD_LAST(fil_system.unencrypted_spaces, space);
-	fil_system.crypt_enlist(false);
-}
-
-/** Add the space to the encrypted list.
-@param[in]	space	space to be added in encrypted list. */
-static void fil_space_add_encrypted_list(fil_space_t* space)
-{
-	if (space->is_in_encrypted_spaces()) {
-		return;
-	}
-
-	space->remove_if_in_unencrypted_spaces();
-	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
-	fil_system.crypt_enlist(true);
-}
-
 /** Add the space to encrypted or unencrypted list. */
 void fil_space_t::crypt_enlist()
 {
@@ -5168,11 +5141,16 @@ void fil_space_t::crypt_enlist()
 		return;
 	}
 
-	if (crypt_data == NULL
-	    || crypt_data->min_key_version == 0) {
-		fil_space_add_unencrypted_list(this);
+	if (!crypt_data || !crypt_data->min_key_version) {
+		if (add_if_not_in_unencrypted_spaces()) {
+			remove_if_in_encrypted_spaces();
+			fil_system.crypt_enlist(false);
+		}
 	} else {
-		fil_space_add_encrypted_list(this);
+		if (add_if_not_in_encrypted_spaces()) {
+			remove_if_in_unencrypted_spaces();
+			fil_system.crypt_enlist(true);
+		}
 	}
 }
 
