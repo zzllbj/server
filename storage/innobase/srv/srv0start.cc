@@ -1600,8 +1600,6 @@ dberr_t srv_start(bool create_new_db)
 			return(srv_init_abort(DB_ERROR));
 		}
 		recv_sys_debug_free();
-		/* The system tablespace is initially created unencrypted. */
-		srv_crypt_space_status = ALL_DECRYPTED;
 	}
 
 	/* Open or create the data files. */

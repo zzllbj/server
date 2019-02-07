@@ -92,9 +92,6 @@ static ib_mutex_t crypt_stat_mutex;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
 
-/** Global encryption status of persistent tablespaces */
-srv_crypt_status_t srv_crypt_space_status;
-
 /***********************************************************************
 Check if a key needs rotation given a key_state
 @param[in]	crypt_data		Encryption information
@@ -1436,17 +1433,6 @@ fil_crypt_return_iops(
 	fil_crypt_update_total_stat(state);
 }
 
-/** Verify whether both global encryption status variable and
-innodb_encrypt_tables are in encryption/decryption state.
-@retval true if srv_encrypt_space_status and innodb_encrypt_tables
-		both shows encryption/decryption state. */
-static bool fil_crypt_stable_state()
-{
-	return (srv_encrypt_tables && srv_crypt_space_status == ALL_ENCRYPTED)
-	       || (!srv_encrypt_tables
-		   && srv_crypt_space_status == ALL_DECRYPTED);
-}
-
 /***********************************************************************
 Search for a space needing rotation
 @param[in,out]		key_state		Key state
@@ -1482,11 +1468,7 @@ fil_crypt_find_space_to_rotate(
 	}
 
 	if (srv_fil_crypt_rotate_key_age == 0) {
-		mutex_enter(&fil_system.mutex);
-		bool is_stable = fil_crypt_stable_state();
-		mutex_exit(&fil_system.mutex);
-
-		if (is_stable) {
+		if (fil_system.is_stable_crypt_status(srv_encrypt_tables)) {
 			fil_crypt_return_iops(state);
 			return false;
 		}

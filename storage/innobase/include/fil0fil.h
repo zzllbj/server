@@ -605,6 +605,8 @@ struct fil_system_t {
     UT_LIST_INIT(named_spaces, &fil_space_t::named_spaces);
     UT_LIST_INIT(encrypted_spaces, &fil_space_t::encrypted_spaces);
     UT_LIST_INIT(unencrypted_spaces, &fil_space_t::unencrypted_spaces);
+    /* The system tablespace is initially created unencrypted. */
+    crypt_status = CRYPT_DECRYPTED;
   }
 
   bool is_initialised() const { return m_initialised; }
@@ -680,6 +682,27 @@ public:
 					/*!< whether fil_space_create()
 					has issued a warning about
 					potential space_id reuse */
+
+	/** Global encryption status. @see DICT_HDR_CRYPT_STATUS */
+	enum crypt_status_t {
+		/** All persistent tablespaces are in encrypted state */
+		CRYPT_ENCRYPTED = 8,
+		/** All persistent tablespaces are in unencrypted state */
+		CRYPT_DECRYPTED,
+		/** Some are unencrypted, some encrypted */
+		CRYPT_MIXED
+	} crypt_status;
+
+	/** @return whether crypt_status has reached a stable state */
+	bool is_stable_crypt_status(bool encrypted)
+	{
+		mutex_enter(&mutex);
+		bool stable = crypt_status == (encrypted
+					       ? CRYPT_ENCRYPTED
+					       : CRYPT_DECRYPTED);
+		mutex_exit(&mutex);
+		return stable;
+	}
 };
 
 /** The tablespace memory cache. */

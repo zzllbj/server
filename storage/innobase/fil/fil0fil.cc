@@ -5089,20 +5089,20 @@ inline void fil_system_t::crypt_enlist(bool encrypted)
 	ut_ad(mutex_own(&mutex));
 	ut_ad(srv_operation == SRV_OPERATION_NORMAL);
 
-	auto status = srv_crypt_space_status;
+	crypt_status_t status = crypt_status;
 
 	switch (status) {
-	case ALL_ENCRYPTED:
+	case CRYPT_ENCRYPTED:
 		if (!encrypted) {
-			status = MIXED_STATE;
+			status = CRYPT_MIXED;
 		}
 		break;
-	case ALL_DECRYPTED:
+	case CRYPT_DECRYPTED:
 		if (encrypted) {
-			status = MIXED_STATE;
+			status = CRYPT_MIXED;
 		}
 		break;
-	case MIXED_STATE:
+	case CRYPT_MIXED:
 		ulint n_encrypted = UT_LIST_GET_LEN(encrypted_spaces);
 		ulint n_unencrypted = UT_LIST_GET_LEN(unencrypted_spaces);
 		/* space_list includes redo log and temp_space,
@@ -5113,17 +5113,17 @@ inline void fil_system_t::crypt_enlist(bool encrypted)
 			    >= n_encrypted + n_unencrypted);
 
 		if (n_total == n_encrypted) {
-			status = ALL_ENCRYPTED;
+			status = CRYPT_ENCRYPTED;
 		} else if (n_total == n_unencrypted) {
-			status = ALL_DECRYPTED;
+			status = CRYPT_DECRYPTED;
 		}
 	}
 
-	if (status == srv_crypt_space_status) {
+	if (status == crypt_status) {
 		return;
 	}
 
-	srv_crypt_space_status = status;
+	crypt_status = status;
 
 	if (!srv_startup_is_before_trx_rollback_phase) {
 		mutex_exit(&mutex);

@@ -165,9 +165,9 @@ dict_hdr_create(
 			 0, MLOG_4BYTES, mtr);
 
 	mlog_write_ulint(dict_header + DICT_HDR_CRYPT_STATUS,
-			 srv_crypt_space_status, MLOG_4BYTES, mtr);
+			 fil_system.crypt_status, MLOG_4BYTES, mtr);
 
-	compile_time_assert(DICT_HDR_FIRST_ID == MIXED_STATE);
+	compile_time_assert(DICT_HDR_FIRST_ID == fil_system_t::CRYPT_MIXED);
 
 	/* Create the B-tree roots for the clustered indexes of the basic
 	system tables */
@@ -448,13 +448,18 @@ dict_boot(void)
 	ib_uint32_t st = mach_read_from_4(dict_hdr + DICT_HDR_CRYPT_STATUS);
 	mtr_commit(&mtr);
 
-	if (st < ALL_ENCRYPTED || st > MIXED_STATE) {
+	switch (st) {
+	case fil_system_t::CRYPT_ENCRYPTED:
+	case fil_system_t::CRYPT_DECRYPTED:
+	case fil_system_t::CRYPT_MIXED:
+		break;
+	default:
 		ib::error() << "Unknown DICT_HDR_CRYPT_STATUS value " << st;
 		mutex_exit(&dict_sys->mutex);
 		return DB_ERROR;
 	}
 
-	srv_crypt_space_status = srv_crypt_status_t(st);
+	fil_system.crypt_status = fil_system_t::crypt_status_t(st);
 
 	/*-------------------------*/
 
@@ -536,7 +541,7 @@ void dict_hdr_crypt_status_update()
 	mtr_t mtr;
 	mtr.start();
 	byte* s = dict_hdr_get(&mtr) + DICT_HDR_CRYPT_STATUS;
-	uint32_t status = srv_crypt_space_status;
+	uint32_t status = fil_system.crypt_status;
 	if (mach_read_from_4(s) != status) {
 		mlog_write_ulint(s, status, MLOG_4BYTES, &mtr);
 	}

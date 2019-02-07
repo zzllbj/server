@@ -729,18 +729,6 @@ enum srv_thread_type {
 					number must be biggest) */
 };
 
-/** Types of global encrypt status of all tablespace. */
-enum srv_crypt_status_t {
-	/** All persistent tablespaces are in encrypted state */
-	ALL_ENCRYPTED = 8,
-	/** All persistent tablespaces are in unencrypted state */
-	ALL_DECRYPTED,
-	/** Some persistent tablespaces are unencrypted, some encrypted */
-	MIXED_STATE
-};
-
-extern srv_crypt_status_t	srv_crypt_space_status;
-
 /*********************************************************************//**
 Boots Innobase server. */
 void
