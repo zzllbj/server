@@ -5079,16 +5079,16 @@ fil_space_set_punch_hole(
 	node->space->punch_hole = val;
 }
 
-/** Set the crypt status of all tablespace.
-@param[in]	encrypted	whether tablespace added in
-				encrypted list */
-static void fil_space_set_crypt_status(bool encrypted)
+inline void fil_system_t::crypt_enlist(bool encrypted)
 {
-	if (!mysqld_server_started || srv_read_only_mode) {
+	ut_ad(is_initialised());
+	ut_ad(this == &fil_system);
+
+	if (srv_read_only_mode) {
 		return;
 	}
 
-	ut_ad(mutex_own(&fil_system.mutex));
+	ut_ad(mutex_own(&mutex));
 	ut_ad(srv_operation == SRV_OPERATION_NORMAL);
 
 	auto status = srv_crypt_space_status;
@@ -5105,13 +5105,13 @@ static void fil_space_set_crypt_status(bool encrypted)
 		}
 		break;
 	case MIXED_STATE:
-		ulint n_encrypted = UT_LIST_GET_LEN(fil_system.encrypted_spaces);
-		ulint n_unencrypted = UT_LIST_GET_LEN(fil_system.unencrypted_spaces);
-		/* space_list includes redo log and fil_system.temp_space,
+		ulint n_encrypted = UT_LIST_GET_LEN(encrypted_spaces);
+		ulint n_unencrypted = UT_LIST_GET_LEN(unencrypted_spaces);
+		/* space_list includes redo log and temp_space,
 		which are not part of the key rotation. */
-		DBUG_ASSERT(UT_LIST_GET_LEN(fil_system.space_list) >= 2);
-		ulint n_total = UT_LIST_GET_LEN(fil_system.space_list) - 2;
-		DBUG_ASSERT(n_total + !fil_system.temp_space
+		DBUG_ASSERT(UT_LIST_GET_LEN(space_list) >= 2);
+		ulint n_total = UT_LIST_GET_LEN(space_list) - 2;
+		DBUG_ASSERT(n_total + !temp_space
 			    >= n_encrypted + n_unencrypted);
 
 		if (n_total == n_encrypted) {
@@ -5128,9 +5128,9 @@ static void fil_space_set_crypt_status(bool encrypted)
 	srv_crypt_space_status = status;
 
 	if (!srv_startup_is_before_trx_rollback_phase) {
-		mutex_exit(&fil_system.mutex);
+		mutex_exit(&mutex);
 		dict_hdr_crypt_status_update();
-		mutex_enter(&fil_system.mutex);
+		mutex_enter(&mutex);
 	}
 }
 
@@ -5188,7 +5188,7 @@ static void fil_space_add_unencrypted_list(fil_space_t* space)
 	}
 
 	UT_LIST_ADD_LAST(fil_system.unencrypted_spaces, space);
-	fil_space_set_crypt_status(false);
+	fil_system.crypt_enlist(false);
 }
 
 /** Add the space to the encrypted list.
@@ -5204,7 +5204,7 @@ static void fil_space_add_encrypted_list(fil_space_t* space)
 	}
 
 	UT_LIST_ADD_LAST(fil_system.encrypted_spaces, space);
-	fil_space_set_crypt_status(true);
+	fil_system.crypt_enlist(true);
 }
 
 /** Add the space to encrypted or unencrypted list. */

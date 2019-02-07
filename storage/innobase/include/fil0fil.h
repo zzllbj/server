@@ -609,6 +609,14 @@ struct fil_system_t {
   /** Close the file system interface at shutdown */
   void close();
 
+  /**
+    Set the encryption status of all tablespaces after a tablespace
+    has been added to unencrypted_spaces or encrypted_spaces.
+
+    @param[in] encrypted	whether the tablespace is encrypted
+  */
+  inline void crypt_enlist(bool encrypted);
+
 private:
   bool m_initialised;
 public:
