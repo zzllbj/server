@@ -152,10 +152,10 @@ struct fil_space_t {
 				records have been issued */
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
-	/** List of all encrypted spaces. Protected by fil_system->mutex. */
+	/** List of all encrypted spaces. Protected by fil_system.mutex. */
 	UT_LIST_NODE_T(fil_space_t) encrypted_spaces;
 
-	/** List of all unencrypted spaces. Protected by fil_system->mutex. */
+	/** List of all unencrypted spaces. Protected by fil_system.mutex. */
 	UT_LIST_NODE_T(fil_space_t) unencrypted_spaces;
 
 	/** MariaDB encryption data */
@@ -670,12 +670,10 @@ public:
 					record has been written since
 					the latest redo log checkpoint.
 					Protected only by log_sys.mutex. */
-	/** list of all encrypted spaces
-	Protected by fil_system->mutex. */
+	/** List of all encrypted spaces */
 	UT_LIST_BASE_NODE_T(fil_space_t) encrypted_spaces;
 
-	/** list of all unencrypted spaces
-	Protected by fil_system->mutex. */
+	/** List of all unencrypted spaces */
 	UT_LIST_BASE_NODE_T(fil_space_t) unencrypted_spaces;
 
 	bool		space_id_reuse_warned;
