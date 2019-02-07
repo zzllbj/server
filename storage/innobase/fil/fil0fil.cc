@@ -1290,7 +1290,6 @@ Error messages are issued to the server log.
 @param[in]	flags		tablespace flags
 @param[in]	purpose		tablespace purpose
 @param[in,out]	crypt_data	encryption information
-@param[in]	mode		encryption mode
 @return pointer to created tablespace, to be filled in with fil_space_t::add()
 @retval NULL on failure (such as when the same tablespace exists) */
 fil_space_t*
@@ -1299,8 +1298,7 @@ fil_space_create(
 	ulint			id,
 	ulint			flags,
 	fil_type_t		purpose,
-	fil_space_crypt_t*	crypt_data,
-	fil_encryption_t	mode)
+	fil_space_crypt_t*	crypt_data)
 {
 	fil_space_t*	space;
 
@@ -3074,7 +3072,7 @@ err_exit:
 	}
 
 	space = fil_space_create(name, space_id, flags, FIL_TYPE_TABLESPACE,
-				 crypt_data, mode);
+				 crypt_data);
 	if (!space) {
 		free(crypt_data);
 		*err = DB_ERROR;

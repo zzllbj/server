@@ -685,7 +685,6 @@ Error messages are issued to the server log.
 @param[in]	flags		tablespace flags
 @param[in]	purpose		tablespace purpose
 @param[in,out]	crypt_data	encryption information
-@param[in]	mode		encryption mode
 @return pointer to created tablespace, to be filled in with fil_space_t::add()
 @retval NULL on failure (such as when the same tablespace exists) */
 fil_space_t*
@@ -694,8 +693,7 @@ fil_space_create(
 	ulint			id,
 	ulint			flags,
 	fil_type_t		purpose,
-	fil_space_crypt_t*	crypt_data,
-	fil_encryption_t	mode = FIL_ENCRYPTION_DEFAULT)
+	fil_space_crypt_t*	crypt_data)
 	MY_ATTRIBUTE((warn_unused_result));
 
 /*******************************************************************//**
