@@ -1259,6 +1259,58 @@ srv_prepare_to_delete_redo_log_files(
 	DBUG_RETURN(flushed_lsn);
 }
 
+/** Replace the redo log files due to resizing or upgrading or
+changing the encryption of the redo log.
+@param[in]	n_files		number of old redo log files
+@param[in,out]	logfilename	buffer for the redo log file name
+@param[in]	dirnamelen	strlen(srv_log_group_home_dir)
+@param[in,out]	logfile0	name of the first log file
+@return	error code */
+static dberr_t srv_replace_log_files(ulint n_files, char* logfilename,
+				     size_t dirnamelen, char* logfile0)
+{
+	/* Prepare to delete the old redo log files */
+	lsn_t flushed_lsn = srv_prepare_to_delete_redo_log_files(n_files);
+
+	DBUG_EXECUTE_IF("innodb_log_abort_1", return DB_ERROR;);
+	/* Prohibit redo log writes from any other threads until
+	creating a log checkpoint at the end of create_log_files(). */
+	ut_d(recv_no_log_write = true);
+	ut_ad(!buf_pool_check_no_pending_io());
+
+	DBUG_EXECUTE_IF("innodb_log_abort_3", return DB_ERROR;);
+	DBUG_PRINT("ib_log", ("After innodb_log_abort_3"));
+
+	/* Stamp the LSN to the data files. */
+	dberr_t err = fil_write_flushed_lsn(flushed_lsn);
+
+	DBUG_EXECUTE_IF("innodb_log_abort_4", return DB_ERROR;);
+	DBUG_PRINT("ib_log", ("After innodb_log_abort_4"));
+
+	if (err != DB_SUCCESS) {
+		return err;
+	}
+
+	/* Close and free the redo log files, so that we can replace them. */
+	fil_close_log_files(true);
+
+	DBUG_EXECUTE_IF("innodb_log_abort_5", return DB_ERROR;);
+	DBUG_PRINT("ib_log", ("After innodb_log_abort_5"));
+
+	ib::info() << "Starting to delete and rewrite log files.";
+
+	srv_log_file_size = srv_log_file_size_requested;
+
+	err = create_log_files(logfilename, dirnamelen, flushed_lsn, logfile0);
+
+	if (err != DB_SUCCESS) {
+		return err;
+	}
+
+	return create_log_files_rename(logfilename, dirnamelen, flushed_lsn,
+				       logfile0);
+}
+
 /** Start InnoDB.
 @param[in]	create_new_db	whether to create a new database
 @return DB_SUCCESS or error code */
@@ -1271,7 +1323,6 @@ dberr_t srv_start(bool create_new_db)
 	char		logfilename[10000];
 	char*		logfile0	= NULL;
 	size_t		dirnamelen;
-	unsigned	i = 0;
 
 	ut_ad(srv_operation == SRV_OPERATION_NORMAL
 	      || srv_operation == SRV_OPERATION_RESTORE
@@ -1549,6 +1600,8 @@ dberr_t srv_start(bool create_new_db)
 			return(srv_init_abort(DB_ERROR));
 		}
 		recv_sys_debug_free();
+		/* The system tablespace is initially created unencrypted. */
+		srv_crypt_space_status = ALL_DECRYPTED;
 	}
 
 	/* Open or create the data files. */
@@ -1577,6 +1630,10 @@ dberr_t srv_start(bool create_new_db)
 		return(srv_init_abort(err));
 	}
 
+	mutex_enter(&fil_system.mutex);
+	fil_system.sys_space->add_to_encrypt_or_unencrypt_list();
+	mutex_exit(&fil_system.mutex);
+
 	dirnamelen = strlen(srv_log_group_home_dir);
 	ut_a(dirnamelen < (sizeof logfilename) - 10 - sizeof "ib_logfile");
 	memcpy(logfilename, srv_log_group_home_dir, dirnamelen);
@@ -1601,6 +1658,7 @@ dberr_t srv_start(bool create_new_db)
 			return(srv_init_abort(err));
 		}
 	} else {
+		unsigned i;
 		srv_log_file_size = 0;
 
 		for (i = 0; i < SRV_N_LOG_FILES_MAX; i++) {
@@ -2002,66 +2060,25 @@ files_checked:
 			/* Completely ignore the redo log. */
 		} else if (srv_read_only_mode) {
 			/* Leave the redo log alone. */
-		} else if (srv_log_file_size_requested == srv_log_file_size
-			   && srv_n_log_files_found == srv_n_log_files
-			   && log_sys.log.format
-			   == (srv_encrypt_log
-			       ? LOG_HEADER_FORMAT_ENC_10_4
-			       : LOG_HEADER_FORMAT_10_4)
-			   && log_sys.log.subformat == 2) {
-			/* No need to add or remove encryption,
-			upgrade, downgrade, or resize. */
 		} else {
-			/* Prepare to delete the old redo log files */
-			flushed_lsn = srv_prepare_to_delete_redo_log_files(i);
+			dict_hdr_crypt_status_update();
 
-			DBUG_EXECUTE_IF("innodb_log_abort_1",
-					return(srv_init_abort(DB_ERROR)););
-			/* Prohibit redo log writes from any other
-			threads until creating a log checkpoint at the
-			end of create_log_files(). */
-			ut_d(recv_no_log_write = true);
-			ut_ad(!buf_pool_check_no_pending_io());
-
-			DBUG_EXECUTE_IF("innodb_log_abort_3",
-					return(srv_init_abort(DB_ERROR)););
-			DBUG_PRINT("ib_log", ("After innodb_log_abort_3"));
-
-			/* Stamp the LSN to the data files. */
-			err = fil_write_flushed_lsn(flushed_lsn);
-
-			DBUG_EXECUTE_IF("innodb_log_abort_4", err = DB_ERROR;);
-			DBUG_PRINT("ib_log", ("After innodb_log_abort_4"));
-
-			if (err != DB_SUCCESS) {
-				return(srv_init_abort(err));
-			}
-
-			/* Close and free the redo log files, so that
-			we can replace them. */
-			fil_close_log_files(true);
-
-			DBUG_EXECUTE_IF("innodb_log_abort_5",
-					return(srv_init_abort(DB_ERROR)););
-			DBUG_PRINT("ib_log", ("After innodb_log_abort_5"));
-
-			ib::info() << "Starting to delete and rewrite log"
-				" files.";
-
-			srv_log_file_size = srv_log_file_size_requested;
-
-			err = create_log_files(
-				logfilename, dirnamelen, flushed_lsn,
-				logfile0);
-
-			if (err == DB_SUCCESS) {
-				err = create_log_files_rename(
-					logfilename, dirnamelen, flushed_lsn,
-					logfile0);
-			}
-
-			if (err != DB_SUCCESS) {
-				return(srv_init_abort(err));
+			if (srv_log_file_size_requested == srv_log_file_size
+			    && srv_n_log_files_found == srv_n_log_files
+			    && log_sys.log.format
+			    == (srv_encrypt_log
+				? LOG_HEADER_FORMAT_ENC_10_4
+				: LOG_HEADER_FORMAT_10_4)
+			    && log_sys.log.subformat == 2) {
+				/* No need to add or remove encryption,
+				upgrade, downgrade, or resize. */
+			} else {
+				err = srv_replace_log_files(
+					srv_n_log_files_found,
+					logfilename, dirnamelen, logfile0);
+				if (err != DB_SUCCESS) {
+					return(srv_init_abort(err));
+				}
 			}
 		}
 
@@ -2182,22 +2199,6 @@ files_checked:
 	srv_startup_is_before_trx_rollback_phase = false;
 
 	if (!srv_read_only_mode) {
-
-		if (!create_new_db) {
-			ib_uint32_t status = dict_hdr_get_crypt_status();
-
-			if (status < ALL_ENCRYPTED && status > MIXED_STATE) {
-				ib::error() << "Unknown value " << status
-				<<" stored as encrypt status in"
-				<<" dictionary header page.\n";
-
-				return DB_ERROR;
-			}
-
-			srv_crypt_space_status = static_cast<srv_crypt_status_t>(
-					dict_hdr_get_crypt_status());
-		}
-
 		/* Create the thread which watches the timeouts
 		for lock waits */
 		thread_handles[2 + SRV_MAX_N_IO_THREADS] = os_thread_create(
@@ -2293,7 +2294,7 @@ files_checked:
 		     > 5 + srv_n_purge_threads + SRV_MAX_N_IO_THREADS);
 
 		/* We've already created the purge coordinator thread above. */
-		for (i = 1; i < srv_n_purge_threads; ++i) {
+		for (unsigned i = 1; i < srv_n_purge_threads; ++i) {
 			thread_handles[5 + i + SRV_MAX_N_IO_THREADS] = os_thread_create(
 				srv_worker_thread, NULL,
 				thread_ids + 5 + i + SRV_MAX_N_IO_THREADS);

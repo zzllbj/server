@@ -49,9 +49,10 @@ print OUT pack("Nx[42]Nx[10]Nx[16312]Nx[4]",
 # Dummy pages 1..6.
 print OUT chr(0) x (6 * 16384);
 # Dictionary header page.
-print OUT pack("NNx[62]Nx[8]Nx[16290]Nx[4]",
+print OUT pack("NNx[58]NNx[8]Nx[16290]Nx[4]",
 	       0xdeadbeef, # checksum
 	       7, # FIL_PAGE_OFFSET
+	       10, # DICT_HDR_CRYPT_STATUS
 	       8, # DICT_HDR_TABLES
 	       9, # DICT_HDR_INDEXES
 	       0xdeadbeef); # checksum

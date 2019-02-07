@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2017, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2016, 2018, MariaDB Corporation.
+Copyright (c) 2016, 2019, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -165,7 +165,7 @@ dict_hdr_create(
 			 0, MLOG_4BYTES, mtr);
 
 	mlog_write_ulint(dict_header + DICT_HDR_CRYPT_STATUS,
-			 MIXED_STATE, MLOG_4BYTES, mtr);
+			 srv_crypt_space_status, MLOG_4BYTES, mtr);
 
 	compile_time_assert(DICT_HDR_FIRST_ID == MIXED_STATE);
 
@@ -445,15 +445,22 @@ dict_boot(void)
 	table->indexes.start->n_core_null_bytes = UT_BITS_IN_BYTES(
 		unsigned(table->indexes.start->n_nullable));
 
+	ib_uint32_t st = mach_read_from_4(dict_hdr + DICT_HDR_CRYPT_STATUS);
 	mtr_commit(&mtr);
+
+	if (st < ALL_ENCRYPTED || st > MIXED_STATE) {
+		ib::error() << "Unknown DICT_HDR_CRYPT_STATUS value " << st;
+		mutex_exit(&dict_sys->mutex);
+		return DB_ERROR;
+	}
+
+	srv_crypt_space_status = srv_crypt_status_t(st);
 
 	/*-------------------------*/
 
 	/* Initialize the insert buffer table and index for each tablespace */
 
-	dberr_t	err = DB_SUCCESS;
-
-	err = ibuf_init_at_db_start();
+	dberr_t	err = ibuf_init_at_db_start();
 
 	if (err == DB_SUCCESS) {
 		if (srv_read_only_mode
@@ -523,28 +530,15 @@ dict_create(void)
 	return(err);
 }
 
-/** Get the encrypt status of all tablespace from dict header page.
-@return the value as ALL_ENCRYPTED, ALL_DECRYPTED and MIXED STATE. */
-ib_uint32_t dict_hdr_get_crypt_status()
+/** Update the crypt status of all tablespaces. */
+void dict_hdr_crypt_status_update()
 {
-	mtr_t	mtr;
-	mtr_start(&mtr);
-	dict_hdr_t*	dict_hdr = dict_hdr_get(&mtr);
-	ib_uint32_t	status = mach_read_from_4(
-			dict_hdr + DICT_HDR_CRYPT_STATUS);
-	mtr_commit(&mtr);
-
-	return status;
-}
-
-/** Set the encrypt status of all tablespace in dict header page.
-@param[in]	status	status of all tablespace. */
-void dict_hdr_set_crypt_status(ib_uint32_t status)
-{
-	mtr_t	mtr;
-	mtr_start(&mtr);
-	dict_hdr_t*	dict_hdr = dict_hdr_get(&mtr);
-	mlog_write_ulint(dict_hdr + DICT_HDR_CRYPT_STATUS, status,
-			 MLOG_4BYTES, &mtr);
-	mtr_commit(&mtr);
+	mtr_t mtr;
+	mtr.start();
+	byte* s = dict_hdr_get(&mtr) + DICT_HDR_CRYPT_STATUS;
+	uint32_t status = srv_crypt_space_status;
+	if (mach_read_from_4(s) != status) {
+		mlog_write_ulint(s, status, MLOG_4BYTES, &mtr);
+	}
+	mtr.commit();
 }

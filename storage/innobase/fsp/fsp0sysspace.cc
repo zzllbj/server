@@ -931,12 +931,6 @@ SysTablespace::open_or_create(
 
 		space->add(it->m_filepath, OS_FILE_CLOSED, it->m_size,
 			   it->m_type != SRV_NOT_RAW, true, max_size);
-
-		if (space->purpose == FIL_TYPE_TABLESPACE) {
-			mutex_enter(&fil_system.mutex);
-			space->add_to_encrypt_or_unencrypt_list();
-			mutex_exit(&fil_system.mutex);
-		}
 	}
 
 	return(err);

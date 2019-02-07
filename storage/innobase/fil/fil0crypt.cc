@@ -92,8 +92,8 @@ static ib_mutex_t crypt_stat_mutex;
 extern my_bool srv_background_scrub_data_uncompressed;
 extern my_bool srv_background_scrub_data_compressed;
 
-/** Variable for maintaining global encryption status of all tablespace */
-UNIV_INTERN srv_crypt_status_t srv_crypt_space_status = MIXED_STATE;
+/** Global encryption status of persistent tablespaces */
+srv_crypt_status_t srv_crypt_space_status;
 
 /***********************************************************************
 Check if a key needs rotation given a key_state

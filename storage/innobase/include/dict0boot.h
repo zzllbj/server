@@ -1,7 +1,7 @@
 /*****************************************************************************
 
 Copyright (c) 1996, 2016, Oracle and/or its affiliates. All Rights Reserved.
-Copyright (c) 2018, MariaDB Corporation.
+Copyright (c) 2018, 2019, MariaDB Corporation.
 
 This program is free software; you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -109,13 +109,8 @@ dict_is_sys_table(
 	table_id_t	id)		/*!< in: table id to check */
 	MY_ATTRIBUTE((warn_unused_result));
 
-/** Get the crypt status of all tablespace from dict hdr page.
-@return the value as ALL_ENCRYPTED, ALL_DECRYPTED, MIXED_STATE. */
-ib_uint32_t	dict_hdr_get_crypt_status();
-
-/** Set the crypt status of all tablespace in dict hdr page.
-@param[in]	status	status of all tablespace. */
-void dict_hdr_set_crypt_status(ib_uint32_t status);
+/** Update the crypt status of all tablespaces. */
+void dict_hdr_crypt_status_update();
 
 /* Space id and page no where the dictionary header resides */
 #define	DICT_HDR_SPACE		0	/* the SYSTEM tablespace */

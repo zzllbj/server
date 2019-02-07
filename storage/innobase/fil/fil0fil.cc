@@ -527,10 +527,7 @@ bool fil_node_t::read_page0(bool first)
 			fil_space_t::zip_size(flags), page);
 	}
 
-	if (first
-	    || (space->purpose == FIL_TYPE_TABLESPACE
-		&& this == UT_LIST_GET_FIRST(space->chain)
-		&& srv_startup_is_before_trx_rollback_phase)) {
+	if (first) {
 		space->add_to_encrypt_or_unencrypt_list();
 	}
 
@@ -1363,10 +1360,6 @@ fil_space_create(
 
 	rw_lock_create(fil_space_latch_key, &space->latch, SYNC_FSP);
 
-	if (crypt_data != NULL) {
-		space->add_to_encrypt_or_unencrypt_list();
-	}
-
 	if (space->purpose == FIL_TYPE_TEMPORARY) {
 		/* SysTablespace::open_or_create() would pass
 		size!=0 to fil_space_t::add(), so first_time_open
@@ -1384,6 +1377,10 @@ fil_space_create(
 	if (id < SRV_LOG_SPACE_FIRST_ID && id > fil_system.max_assigned_id) {
 
 		fil_system.max_assigned_id = id;
+	}
+
+	if (crypt_data) {
+		space->add_to_encrypt_or_unencrypt_list();
 	}
 
 	mutex_exit(&fil_system.mutex);
@@ -5092,30 +5089,35 @@ static void fil_space_set_crypt_status(bool encrypted)
 	}
 
 	ut_ad(mutex_own(&fil_system.mutex));
-	ib_uint32_t	status = srv_crypt_space_status;
+	ut_ad(srv_operation == SRV_OPERATION_NORMAL);
 
-	if (status == ALL_ENCRYPTED) {
+	auto status = srv_crypt_space_status;
+
+	switch (status) {
+	case ALL_ENCRYPTED:
 		if (!encrypted) {
-			srv_crypt_space_status = MIXED_STATE;
+			status = MIXED_STATE;
 		}
-	} else if (status == ALL_DECRYPTED) {
+		break;
+	case ALL_DECRYPTED:
 		if (encrypted) {
-			srv_crypt_space_status = MIXED_STATE;
+			status = MIXED_STATE;
 		}
-	} else {
-		ulint encrypted_space_len = UT_LIST_GET_LEN(
-				fil_system.encrypted_spaces);
-		ulint unencrypted_space_len = UT_LIST_GET_LEN(
-				fil_system.unencrypted_spaces);
-		ulint total_space_len = UT_LIST_GET_LEN(fil_system.space_list);
+		break;
+	case MIXED_STATE:
+		ulint n_encrypted = UT_LIST_GET_LEN(fil_system.encrypted_spaces);
+		ulint n_unencrypted = UT_LIST_GET_LEN(fil_system.unencrypted_spaces);
+		/* space_list includes redo log and fil_system.temp_space,
+		which are not part of the key rotation. */
+		DBUG_ASSERT(UT_LIST_GET_LEN(fil_system.space_list) >= 2);
+		ulint n_total = UT_LIST_GET_LEN(fil_system.space_list) - 2;
+		DBUG_ASSERT(n_total + !fil_system.temp_space
+			    >= n_encrypted + n_unencrypted);
 
-		/* In space list, InnoDB adds redo log and
-		fil_system.temp_space. So while checking for the state,
-		remove these two tablespace. */
-		if (total_space_len == encrypted_space_len + 2) {
-			srv_crypt_space_status = ALL_ENCRYPTED;
-		} else if (total_space_len == unencrypted_space_len + 2) {
-			srv_crypt_space_status = ALL_DECRYPTED;
+		if (n_total == n_encrypted) {
+			status = ALL_ENCRYPTED;
+		} else if (n_total == n_unencrypted) {
+			status = ALL_DECRYPTED;
 		}
 	}
 
@@ -5123,9 +5125,13 @@ static void fil_space_set_crypt_status(bool encrypted)
 		return;
 	}
 
-	mutex_exit(&fil_system.mutex);
-	dict_hdr_set_crypt_status(srv_crypt_space_status);
-	mutex_enter(&fil_system.mutex);
+	srv_crypt_space_status = status;
+
+	if (!srv_startup_is_before_trx_rollback_phase) {
+		mutex_exit(&fil_system.mutex);
+		dict_hdr_crypt_status_update();
+		mutex_enter(&fil_system.mutex);
+	}
 }
 
 /** Checks that this tablespace in a list of unflushed tablespaces.
