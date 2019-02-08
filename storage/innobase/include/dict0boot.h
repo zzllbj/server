@@ -110,7 +110,9 @@ dict_is_sys_table(
 	MY_ATTRIBUTE((warn_unused_result));
 
 /** Update DICT_HDR_CRYPT_STATUS. */
-void dict_hdr_crypt_status_update(uint32_t status);
+ATTRIBUTE_COLD void dict_hdr_crypt_status_update(mtr_t* mtr, uint32_t status);
+/** Update DICT_HDR_CRYPT_STATUS. */
+ATTRIBUTE_COLD void dict_hdr_crypt_status_update(uint32_t status);
 
 /* Space id and page no where the dictionary header resides */
 #define	DICT_HDR_SPACE		0	/* the SYSTEM tablespace */

@@ -193,6 +193,12 @@ struct fil_space_t {
 			ulint size, bool is_raw, bool atomic_write,
 			ulint max_pages = ULINT_MAX);
 
+	/** Detach the tablespace from fil_system.
+	Close but do not delete the files.
+	There must not be any pending i/o's or flushes on the files.
+	@return whether dict_hdr_crypt_status_update() must be called */
+	inline bool detach();
+
 	/** Try to reserve free extents.
 	@param[in]	n_free_now	current number of free extents
 	@param[in]	n_to_reserve	number of extents to reserve
@@ -238,10 +244,12 @@ struct fil_space_t {
 	bool open();
 	/** Close each file. Only invoked on fil_system.temp_space. */
 	void close();
-	/** Add the space to encrypted or unencrypted list. */
-	void crypt_enlist();
-	/** Remove the space from encrypted or unencrypted list. */
-	inline void crypt_delist();
+	/** Add the space to encrypted or unencrypted list.
+	@return whether dict_hdr_crypt_status_update() must be called */
+	bool crypt_enlist();
+	/** Remove the space from encrypted or unencrypted list.
+	@return whether dict_hdr_crypt_status_update() must be called */
+	inline bool crypt_delist();
 
 	/** @return whether this is in fil_system.unflushed_spaces */
 	inline bool is_in_unflushed_spaces() const;
@@ -367,10 +375,24 @@ struct fil_node_t {
 		return(handle != OS_FILE_CLOSED);
 	}
 
+	/** Status of reading the first page of a data file */
+	enum detect_t {
+		/** The file was found invalid */
+		DETECT_INVALID,
+		/** Valid file, and DICT_HDR_CRYPT_STATUS is up to date */
+		DETECT_VALID,
+		/** Valid; dict_hdr_crypt_status_update() must be called */
+		DETECT_UPDATE_DICT_HDR
+	};
+
 	/** Read the first page of a data file.
 	@param[in]	first	whether this is the very first read
 	@return	whether the page was found valid */
-	bool read_page0(bool first);
+	detect_t read_page0(bool first);
+
+	/** Prepare a file for I/O, by opening the file if needed.
+	@return	whether the file was found valid */
+	inline detect_t prepare_for_io();
 
 	/** Close the file handle. */
 	void close();
@@ -626,8 +648,8 @@ struct fil_system_t {
     has been added to unencrypted_spaces or encrypted_spaces.
 
     @param[in] encrypted	whether the tablespace is encrypted
-  */
-  inline void crypt_enlist(bool encrypted);
+    @return whether dict_hdr_crypt_status_update() must be called */
+  inline bool crypt_enlist(bool encrypted);
 
 private:
   bool m_initialised;

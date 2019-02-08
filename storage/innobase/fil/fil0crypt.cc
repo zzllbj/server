@@ -417,48 +417,6 @@ fil_space_crypt_t::write_page0(
 }
 
 /******************************************************************
-Set crypt data for a tablespace
-@param[in,out]		space		Tablespace
-@param[in,out]		crypt_data	Crypt data to be set
-@return crypt_data in tablespace */
-static
-fil_space_crypt_t*
-fil_space_set_crypt_data(
-	fil_space_t*		space,
-	fil_space_crypt_t*	crypt_data)
-{
-	fil_space_crypt_t* free_crypt_data = NULL;
-	fil_space_crypt_t* ret_crypt_data = NULL;
-
-	/* Provided space is protected using fil_space_acquire()
-	from concurrent operations. */
-	if (space->crypt_data != NULL) {
-		/* There is already crypt data present,
-		merge new crypt_data */
-		fil_space_merge_crypt_data(space->crypt_data,
-						   crypt_data);
-		ret_crypt_data = space->crypt_data;
-		free_crypt_data = crypt_data;
-	} else {
-		mutex_enter(&fil_system.mutex);
-		space->crypt_data = crypt_data;
-		space->crypt_enlist();
-		mutex_exit(&fil_system.mutex);
-		ret_crypt_data = crypt_data;
-	}
-
-	if (free_crypt_data != NULL) {
-		/* there was already crypt data present and the new crypt
-		* data provided as argument to this function has been merged
-		* into that => free new crypt data
-		*/
-		fil_space_destroy_crypt_data(&free_crypt_data);
-	}
-
-	return ret_crypt_data;
-}
-
-/******************************************************************
 Parse a MLOG_FILE_WRITE_CRYPT_DATA log entry
 @param[in]	ptr		Log entry start
 @param[in]	end_ptr		Log entry end
@@ -515,7 +473,18 @@ fil_parse_write_crypt_data(
 		return NULL;
 	}
 
-	fil_space_crypt_t* crypt_data = fil_space_create_crypt_data(encryption, key_id);
+	mutex_enter(&fil_system.mutex);
+
+	/* update fil_space memory cache with crypt_data */
+	fil_space_t* space = fil_space_get_by_id(space_id);
+
+	if (!space) {
+		mutex_exit(&fil_system.mutex);
+		return ptr + len;
+	}
+
+	fil_space_crypt_t* crypt_data = fil_space_create_crypt_data(
+		encryption, key_id);
 	/* Need to overwrite these as above will initialize fields. */
 	crypt_data->page0_offset = offset;
 	crypt_data->min_key_version = min_key_version;
@@ -524,17 +493,20 @@ fil_parse_write_crypt_data(
 	memcpy(crypt_data->iv, ptr, len);
 	ptr += len;
 
-	/* update fil_space memory cache with crypt_data */
-	if (fil_space_t* space = fil_space_acquire_silent(space_id)) {
-		crypt_data = fil_space_set_crypt_data(space, crypt_data);
-		space->release();
-		/* Check is used key found from encryption plugin */
-		if (crypt_data->should_encrypt()
-		    && !crypt_data->is_key_found()) {
-			*err = DB_DECRYPTION_FAILED;
-		}
-	} else {
+	if (space->crypt_data) {
+		fil_space_merge_crypt_data(space->crypt_data, crypt_data);
 		fil_space_destroy_crypt_data(&crypt_data);
+		crypt_data = space->crypt_data;
+	} else {
+		space->crypt_data = crypt_data;
+		space->crypt_enlist();
+	}
+
+	mutex_exit(&fil_system.mutex);
+
+	/* Check is used key found from encryption plugin */
+	if (crypt_data->should_encrypt() && !crypt_data->is_key_found()) {
+		*err = DB_DECRYPTION_FAILED;
 	}
 
 	return ptr;
@@ -1020,12 +992,18 @@ fil_crypt_start_encrypting_space(
 	crypt_data->rotate_state.starting = true;
 	crypt_data->rotate_state.active_threads = 1;
 
-	mutex_enter(&crypt_data->mutex);
-	crypt_data = fil_space_set_crypt_data(space, crypt_data);
-	mutex_exit(&crypt_data->mutex);
+	mutex_enter(&fil_system.mutex);
+	space->crypt_data = crypt_data;
+	bool changed = space->crypt_enlist();
+	fil_system_t::crypt_status_t st = fil_system.crypt_status;
+	mutex_exit(&fil_system.mutex);
 
 	fil_crypt_start_converting = true;
 	mutex_exit(&fil_crypt_threads_mutex);
+
+	if (changed) {
+		dict_hdr_crypt_status_update(st);
+	}
 
 	do
 	{
@@ -2025,13 +2003,17 @@ fil_crypt_flush_space(
 		crypt_data->write_page0(space, block->frame, &mtr);
 	}
 
-	mtr.commit();
-
 	if (crypt_data != NULL) {
 		mutex_enter(&fil_system.mutex);
-		space->crypt_enlist();
+		bool changed = space->crypt_enlist();
+		fil_system_t::crypt_status_t st = fil_system.crypt_status;
 		mutex_exit(&fil_system.mutex);
+		if (changed) {
+			dict_hdr_crypt_status_update(&mtr, st);
+		}
 	}
+
+	mtr.commit();
 }
 
 /***********************************************************************

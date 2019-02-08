@@ -235,21 +235,6 @@ fil_space_belongs_in_lru(
 	return(false);
 }
 
-/********************************************************************//**
-NOTE: you must call fil_mutex_enter_and_prepare_for_io() first!
-
-Prepares a file node for i/o. Opens the file if it is closed. Updates the
-pending i/o's field in the node and the system appropriately. Takes the node
-off the LRU list if it is in the LRU list. The caller must hold the fil_sys
-mutex.
-@return false if the file can't be opened, otherwise true */
-static
-bool
-fil_node_prepare_for_io(
-/*====================*/
-	fil_node_t*	node,	/*!< in: file node */
-	fil_space_t*	space);	/*!< in: space */
-
 /** Update the data structures when an i/o operation finishes.
 @param[in,out] node		file node
 @param[in] type			IO context */
@@ -472,7 +457,7 @@ fil_node_t* fil_space_t::add(const char* name, pfs_os_file_t handle,
 /** Read the first page of a data file.
 @param[in]	first	whether this is the very first read
 @return	whether the page was found valid */
-bool fil_node_t::read_page0(bool first)
+fil_node_t::detect_t fil_node_t::read_page0(bool first)
 {
 	ut_ad(mutex_own(&fil_system.mutex));
 	ut_a(space->purpose != FIL_TYPE_LOG);
@@ -486,7 +471,7 @@ bool fil_node_t::read_page0(bool first)
 		ib::error() << "The size of the file " << name
 			    << " is only " << size_bytes
 			    << " bytes, should be at least " << min_size;
-		return false;
+		return DETECT_INVALID;
 	}
 
 	byte* buf2 = static_cast<byte*>(ut_malloc_nokey(2 * psize));
@@ -497,9 +482,18 @@ bool fil_node_t::read_page0(bool first)
 	if (!os_file_read(request, handle, page, 0, psize)) {
 		ib::error() << "Unable to read first page of file " << name;
 		ut_free(buf2);
-		return false;
+		return DETECT_INVALID;
 	}
 	const ulint space_id = fsp_header_get_space_id(page);
+	if (UNIV_UNLIKELY(space_id != space->id)) {
+		ib::error() << "Expected tablespace id " << space->id
+			<< " but found " << space_id
+			<< " in the file " << name;
+invalid:
+		ut_free(buf2);
+		return DETECT_INVALID;
+	}
+
 	ulint flags = fsp_header_get_flags(page);
 	const ulint size = fsp_header_get_field(page, FSP_SIZE);
 	const ulint free_limit = fsp_header_get_field(page, FSP_FREE_LIMIT);
@@ -514,8 +508,7 @@ bool fil_node_t::read_page0(bool first)
 				<< ib::hex(space->flags)
 				<< " but found " << ib::hex(flags)
 				<< " in the file " << name;
-			ut_free(buf2);
-			return false;
+			goto invalid;
 		}
 
 		flags = cflags;
@@ -527,18 +520,10 @@ bool fil_node_t::read_page0(bool first)
 			fil_space_t::zip_size(flags), page);
 	}
 
-	if (first) {
-		space->crypt_enlist();
-	}
+	detect_t detect = first && space->crypt_enlist()
+		? DETECT_UPDATE_DICT_HDR : DETECT_VALID;
 
 	ut_free(buf2);
-
-	if (UNIV_UNLIKELY(space_id != space->id)) {
-		ib::error() << "Expected tablespace id " << space->id
-			<< " but found " << space_id
-			<< " in the file " << name;
-		return false;
-	}
 
 	ut_ad(space->free_limit == 0 || space->free_limit == free_limit);
 	ut_ad(space->free_len == 0 || space->free_len == free_len);
@@ -561,13 +546,13 @@ bool fil_node_t::read_page0(bool first)
 		space->size += this->size;
 	}
 
-	return true;
+	return detect;
 }
 
 /** Open a file node of a tablespace.
 @param[in,out]	node	File node
-@return false if the file can't be opened, otherwise true */
-static bool fil_node_open_file(fil_node_t* node)
+@return fil_node_t::read_page0() status */
+static fil_node_t::detect_t fil_node_open_file(fil_node_t* node)
 {
 	bool		success;
 	bool		read_only_mode;
@@ -581,6 +566,7 @@ static bool fil_node_open_file(fil_node_t* node)
 		&& srv_read_only_mode;
 
 	const bool first_time_open = node->size == 0;
+	fil_node_t::detect_t detect = fil_node_t::DETECT_VALID;
 
 	if (first_time_open
 	    || (space->purpose == FIL_TYPE_TABLESPACE
@@ -612,13 +598,14 @@ retry:
 			ib::warn() << "Cannot open '" << node->name << "'."
 				" Have you deleted .ibd files under a"
 				" running mysqld server?";
-			return(false);
+			return fil_node_t::DETECT_INVALID;
 		}
 
-		if (!node->read_page0(first_time_open)) {
+		detect = node->read_page0(first_time_open);
+		if (detect == fil_node_t::DETECT_INVALID) {
 			os_file_close(node->handle);
 			node->handle = OS_FILE_CLOSED;
-			return false;
+			return detect;
 		}
 	} else if (space->purpose == FIL_TYPE_LOG) {
 		node->handle = os_file_create(
@@ -666,7 +653,7 @@ retry:
 		UT_LIST_ADD_FIRST(fil_system.LRU, node);
 	}
 
-	return(true);
+	return detect;
 }
 
 /** Close the file handle. */
@@ -865,6 +852,30 @@ skip_flush:
 	space->n_pending_flushes--;
 }
 
+/** Release fil_system.mutex and update DICT_HDR_CRYPT_STATUS if needed */
+static void fil_system_exit_and_update(fil_node_t::detect_t detect)
+{
+	fil_system_t::crypt_status_t st = fil_system.crypt_status;
+
+	mutex_exit(&fil_system.mutex);
+
+	if (UNIV_UNLIKELY(detect == fil_node_t::DETECT_UPDATE_DICT_HDR)) {
+		dict_hdr_crypt_status_update(st);
+	}
+}
+
+/** Release fil_system.mutex and update DICT_HDR_CRYPT_STATUS if needed */
+static void fil_system_exit_and_update(bool do_update)
+{
+	fil_system_t::crypt_status_t st = fil_system.crypt_status;
+
+	mutex_exit(&fil_system.mutex);
+
+	if (UNIV_UNLIKELY(do_update)) {
+		dict_hdr_crypt_status_update(st);
+	}
+}
+
 /** Try to extend a tablespace.
 @param[in,out]	space	tablespace to be extended
 @param[in,out]	node	last file of the tablespace
@@ -882,6 +893,7 @@ fil_space_extend_must_retry(
 	ut_ad(mutex_own(&fil_system.mutex));
 	ut_ad(UT_LIST_GET_LAST(space->chain) == node);
 	ut_ad(size >= FIL_IBD_FILE_INITIAL_SIZE);
+	ut_ad(node->space == space);
 
 	*success = space->size >= size;
 
@@ -902,7 +914,9 @@ fil_space_extend_must_retry(
 
 	node->being_extended = true;
 
-	if (!fil_node_prepare_for_io(node, space)) {
+	fil_node_t::detect_t detect = node->prepare_for_io();
+
+	if (detect == fil_node_t::DETECT_INVALID) {
 		/* The tablespace data file, such as .ibd file, is missing */
 		node->being_extended = false;
 		return(false);
@@ -911,7 +925,8 @@ fil_space_extend_must_retry(
 	/* At this point it is safe to release fil_system.mutex. No
 	other thread can rename, delete, close or extend the file because
 	we have set the node->being_extended flag. */
-	mutex_exit(&fil_system.mutex);
+
+	fil_system_exit_and_update(detect);
 
 	ut_ad(size >= space->size);
 
@@ -1150,50 +1165,47 @@ fil_node_close_to_free(
 	}
 }
 
-/** Detach a space object from the tablespace memory cache.
-Closes the files in the chain but does not delete them.
+/** Detach the tablespace from fil_system.
+Close but do not delete the files.
 There must not be any pending i/o's or flushes on the files.
-@param[in,out]	space		tablespace */
-static
-void
-fil_space_detach(
-	fil_space_t*	space)
+@return whether dict_hdr_crypt_status_update() must be called */
+inline bool fil_space_t::detach()
 {
 	ut_ad(mutex_own(&fil_system.mutex));
+	ut_a(magic_n == FIL_SPACE_MAGIC_N);
+	ut_a(n_pending_flushes == 0);
 
-	if (space->purpose == FIL_TYPE_TABLESPACE) {
-		space->crypt_delist();
+	bool changed = purpose == FIL_TYPE_TABLESPACE && crypt_delist()
+		&& !srv_read_only_mode;
+
+	HASH_DELETE(fil_space_t, hash, fil_system.spaces, id, this);
+
+	if (is_in_unflushed_spaces()) {
+		ut_ad(!fil_buffering_disabled(this));
+		UT_LIST_REMOVE(fil_system.unflushed_spaces, this);
 	}
 
-	HASH_DELETE(fil_space_t, hash, fil_system.spaces, space->id, space);
+	UT_LIST_REMOVE(fil_system.space_list, this);
 
-	if (space->is_in_unflushed_spaces()) {
-
-		ut_ad(!fil_buffering_disabled(space));
-
-		UT_LIST_REMOVE(fil_system.unflushed_spaces, space);
-	}
-
-	UT_LIST_REMOVE(fil_system.space_list, space);
-
-	ut_a(space->magic_n == FIL_SPACE_MAGIC_N);
-	ut_a(space->n_pending_flushes == 0);
-
-	for (fil_node_t* fil_node = UT_LIST_GET_FIRST(space->chain);
+	for (fil_node_t* fil_node = UT_LIST_GET_FIRST(chain);
 	     fil_node != NULL;
 	     fil_node = UT_LIST_GET_NEXT(chain, fil_node)) {
-
-		fil_node_close_to_free(fil_node, space);
+		fil_node_close_to_free(fil_node, this);
 	}
 
-	if (space == fil_system.sys_space) {
+	if (this == fil_system.sys_space) {
+		changed = false;
 		fil_system.sys_space = NULL;
-	} else if (space == fil_system.temp_space) {
+	} else if (this == fil_system.temp_space) {
+		ut_ad(!changed);
+		ut_ad(purpose == FIL_TYPE_TEMPORARY);
 		fil_system.temp_space = NULL;
 	}
+
+	return changed;
 }
 
-/** Free a tablespace object on which fil_space_detach() was invoked.
+/** Free a tablespace object on which fil_space_t::detach() was invoked.
 There must not be any pending i/o's or flushes on the files.
 @param[in,out]	space		tablespace */
 static
@@ -1206,7 +1218,7 @@ fil_space_free_low(
 	      || space->max_lsn == 0);
 
 	/* Wait for fil_space_t::release_for_io(); after
-	fil_space_detach(), the tablespace cannot be found, so
+	fil_space_t::detach(), the tablespace cannot be found, so
 	fil_space_acquire_for_io() would return NULL */
 	while (space->pending_io()) {
 		os_thread_sleep(100);
@@ -1245,11 +1257,8 @@ fil_space_free(
 
 	mutex_enter(&fil_system.mutex);
 	fil_space_t*	space = fil_space_get_by_id(id);
-
-	if (space != NULL) {
-		fil_space_detach(space);
-	}
-
+	bool changed = space && space->detach();
+	fil_system_t::crypt_status_t st = fil_system.crypt_status;
 	mutex_exit(&fil_system.mutex);
 
 	if (space != NULL) {
@@ -1260,6 +1269,9 @@ fil_space_free(
 		bool	need_mutex = !recv_recovery_on;
 
 		if (need_mutex) {
+			if (changed) {
+				dict_hdr_crypt_status_update(st);
+			}
 			log_mutex_enter();
 		}
 
@@ -1379,11 +1391,13 @@ fil_space_create(
 		fil_system.max_assigned_id = id;
 	}
 
-	if (crypt_data) {
-		space->crypt_enlist();
-	}
-
-	mutex_exit(&fil_system.mutex);
+	/* FIXME: if crypt_data == NULL, update fil_system.crypt_status
+	from CRYPT_ENCRYPTED to CRYPT_MIXED? */
+	bool changed = crypt_data && space->crypt_enlist();
+	/* FIXME: see if this update can be propagated to the caller
+	to be merged with the MLOG_FILE_CREATE mini-transaction,
+	or if removing fil_space_merge_crypt_data() would help */
+	fil_system_exit_and_update(changed);
 
 	return(space);
 }
@@ -1438,30 +1452,31 @@ fil_assign_new_space_id(
 	return(success);
 }
 
-/*******************************************************************//**
-Returns a pointer to the fil_space_t that is in the memory cache
-associated with a space id. The caller must lock fil_system.mutex.
-@return file_space_t pointer, NULL if space not found */
-UNIV_INLINE
-fil_space_t*
-fil_space_get_space(
-/*================*/
-	ulint	id)	/*!< in: space id */
+/** Look up a tablespace by id, and open the file if it was not yet opened.
+@param[in]	id	tablespace identifier
+@param[out]	space	tablespace (NULL if not found)
+@return fil_node_t::read_page0() status */
+static fil_node_t::detect_t fil_space_get_space(ulint id, fil_space_t*& space)
 {
-	fil_space_t*	space;
-	fil_node_t*	node;
-
 	ut_ad(fil_system.is_initialised());
 
 	space = fil_space_get_by_id(id);
-	if (space == NULL || space->size != 0) {
-		return(space);
+
+	if (!space) {
+		return fil_node_t::DETECT_INVALID;
+	}
+
+	fil_node_t::detect_t detect = fil_node_t::DETECT_VALID;
+
+	if (space->size) {
+		return detect;
 	}
 
 	switch (space->purpose) {
+	case FIL_TYPE_TEMPORARY:
+		ut_ad(0);
 	case FIL_TYPE_LOG:
 		break;
-	case FIL_TYPE_TEMPORARY:
 	case FIL_TYPE_TABLESPACE:
 	case FIL_TYPE_IMPORT:
 		ut_a(id != 0);
@@ -1479,29 +1494,30 @@ fil_space_get_space(
 		space = fil_space_get_by_id(id);
 
 		if (space == NULL || UT_LIST_GET_LEN(space->chain) == 0) {
-			return(NULL);
+			space = NULL;
+			return fil_node_t::DETECT_INVALID;
 		}
 
 		/* The following code must change when InnoDB supports
 		multiple datafiles per tablespace. */
 		ut_a(1 == UT_LIST_GET_LEN(space->chain));
 
-		node = UT_LIST_GET_FIRST(space->chain);
+		fil_node_t* node = UT_LIST_GET_FIRST(space->chain);
 
 		/* It must be a single-table tablespace and we have not opened
 		the file yet; the following calls will open it and update the
 		size fields */
 
-		if (!fil_node_prepare_for_io(node, space)) {
-			/* The single-table tablespace can't be opened,
-			because the ibd file is missing. */
-			return(NULL);
-		}
+		detect = node->prepare_for_io();
 
-		fil_node_complete_io(node, IORequestRead);
+		if (detect == fil_node_t::DETECT_INVALID) {
+			space = NULL;
+		} else {
+			fil_node_complete_io(node, IORequestRead);
+		}
 	}
 
-	return(space);
+	return detect;
 }
 
 /** Set the recovered size of a tablespace in pages.
@@ -1515,7 +1531,8 @@ fil_space_set_recv_size(ulint id, ulint size)
 	ut_ad(size);
 	ut_ad(id < SRV_LOG_SPACE_FIRST_ID);
 
-	if (fil_space_t* space = fil_space_get_space(id)) {
+	fil_space_t* space;
+	if (fil_space_get_space(id, space) != fil_node_t::DETECT_INVALID) {
 		space->recv_size = size;
 	}
 
@@ -1537,11 +1554,11 @@ fil_space_get_size(
 	ut_ad(fil_system.is_initialised());
 	mutex_enter(&fil_system.mutex);
 
-	space = fil_space_get_space(id);
+	fil_node_t::detect_t detect = fil_space_get_space(id, space);
 
 	size = space ? space->size : 0;
 
-	mutex_exit(&fil_system.mutex);
+	fil_system_exit_and_update(detect);
 
 	return(size);
 }
@@ -1562,9 +1579,10 @@ fil_space_get_flags(
 
 	mutex_enter(&fil_system.mutex);
 
-	space = fil_space_get_space(id);
+	fil_node_t::detect_t detect = fil_space_get_space(id, space);
 
 	if (space == NULL) {
+		ut_ad(detect == fil_node_t::DETECT_INVALID);
 		mutex_exit(&fil_system.mutex);
 
 		return(ULINT_UNDEFINED);
@@ -1572,7 +1590,7 @@ fil_space_get_flags(
 
 	flags = space->flags;
 
-	mutex_exit(&fil_system.mutex);
+	fil_system_exit_and_update(detect);
 
 	return(flags);
 }
@@ -1592,7 +1610,9 @@ bool fil_space_t::open()
 	for (fil_node_t* node = UT_LIST_GET_FIRST(chain);
 	     node != NULL;
 	     node = UT_LIST_GET_NEXT(chain, node)) {
-		if (!node->is_open() && !fil_node_open_file(node)) {
+		if (!node->is_open()
+		    && fil_node_open_file(node)
+		    == fil_node_t::DETECT_INVALID) {
 			mutex_exit(&fil_system.mutex);
 			return false;
 		}
@@ -1698,7 +1718,8 @@ fil_open_log_and_system_tablespace_files(void)
 		     node = UT_LIST_GET_NEXT(chain, node)) {
 
 			if (!node->is_open()) {
-				if (!fil_node_open_file(node)) {
+				if (fil_node_open_file(node)
+				    == fil_node_t::DETECT_INVALID) {
 					/* This func is called during server's
 					startup. If some file of log or system
 					tablespace is missing, the server
@@ -1763,7 +1784,7 @@ fil_close_all_files(void)
 		}
 
 		space = UT_LIST_GET_NEXT(space_list, space);
-		fil_space_detach(prev_space);
+		prev_space->detach();
 		fil_space_free_low(prev_space);
 	}
 
@@ -1812,7 +1833,7 @@ fil_close_log_files(
 		space = UT_LIST_GET_NEXT(space_list, space);
 
 		if (free) {
-			fil_space_detach(prev_space);
+			prev_space->detach();
 			fil_space_free_low(prev_space);
 		}
 	}
@@ -2509,34 +2530,6 @@ fil_delete_tablespace(
 
 	buf_LRU_flush_or_remove_pages(id, NULL);
 
-	/* If it is a delete then also delete any generated files, otherwise
-	when we drop the database the remove directory will fail. */
-	{
-		/* Before deleting the file, write a log record about
-		it, so that InnoDB crash recovery will expect the file
-		to be gone. */
-		mtr_t		mtr;
-
-		mtr_start(&mtr);
-		fil_op_write_log(MLOG_FILE_DELETE, id, 0, path, NULL, 0, &mtr);
-		mtr_commit(&mtr);
-		/* Even if we got killed shortly after deleting the
-		tablespace file, the record must have already been
-		written to the redo log. */
-		log_write_up_to(mtr.commit_lsn(), true);
-
-		char*	cfg_name = fil_make_filepath(path, NULL, CFG, false);
-		if (cfg_name != NULL) {
-			os_file_delete_if_exists(innodb_data_file_key, cfg_name, NULL);
-			ut_free(cfg_name);
-		}
-	}
-
-	/* Delete the link file pointing to the ibd file we are deleting. */
-	if (FSP_FLAGS_HAS_DATA_DIR(space->flags)) {
-		RemoteDatafile::delete_link_file(space->name);
-	}
-
 	mutex_enter(&fil_system.mutex);
 
 	/* Double check the sanity of pending ops after reacquiring
@@ -2548,7 +2541,8 @@ fil_delete_tablespace(
 		fil_node_t* node = UT_LIST_GET_FIRST(space->chain);
 		ut_a(node->n_pending == 0);
 
-		fil_space_detach(space);
+		bool changed = space->detach();
+		fil_system_t::crypt_status_t st = fil_system.crypt_status;
 		mutex_exit(&fil_system.mutex);
 
 		log_mutex_enter();
@@ -2560,6 +2554,22 @@ fil_delete_tablespace(
 
 		log_mutex_exit();
 		fil_space_free_low(space);
+
+		/* Before deleting the file, write a log record about
+		it, so that InnoDB crash recovery will expect the file
+		to be gone. */
+
+		mtr_t mtr;
+		mtr.start();
+		fil_op_write_log(MLOG_FILE_DELETE, id, 0, path, NULL, 0, &mtr);
+		if (changed) {
+			dict_hdr_crypt_status_update(&mtr, st);
+		}
+		mtr.commit();
+		/* Even if we got killed shortly after deleting the
+		tablespace file, the record must have already been
+		written to the redo log. */
+		log_write_up_to(mtr.commit_lsn(), true);
 
 		if (!os_file_delete(innodb_data_file_key, path)
 		    && !os_file_delete_if_exists(
@@ -2573,6 +2583,16 @@ fil_delete_tablespace(
 	} else {
 		mutex_exit(&fil_system.mutex);
 		err = DB_TABLESPACE_NOT_FOUND;
+	}
+
+	if (char* cfg_name = fil_make_filepath(path, NULL, CFG, false)) {
+		os_file_delete_if_exists(innodb_data_file_key, cfg_name, NULL);
+		ut_free(cfg_name);
+	}
+
+	/* Delete the link file pointing to the ibd file we are deleting. */
+	if (FSP_FLAGS_HAS_DATA_DIR(space->flags)) {
+		RemoteDatafile::delete_link_file(space->name);
 	}
 
 	ut_free(path);
@@ -3076,23 +3096,30 @@ err_exit:
 	} else {
 		fil_node_t* file = space->add(path, OS_FILE_CLOSED, size,
 					      false, true);
+		/* FIXME: Write MLOG_FILE_CREATE2 before creating the file,
+		and write proper undo log for CREATE operations, so that
+		the table will be dropped on rollback. */
 		mtr_t mtr;
 		mtr.start();
 		fil_op_write_log(
 			MLOG_FILE_CREATE2, space_id, 0, file->name,
 			NULL, space->flags & ~FSP_FLAGS_MEM_MASK, &mtr);
 		fil_name_write(space, 0, file, &mtr);
-		mtr.commit();
 
 		file->block_size = block_size;
 		space->punch_hole = punch_hole;
 
 		if (space->purpose == FIL_TYPE_TABLESPACE && !crypt_data) {
 			mutex_enter(&fil_system.mutex);
-			space->crypt_enlist();
+			bool changed = space->crypt_enlist();
+			auto st = fil_system.crypt_status;
 			mutex_exit(&fil_system.mutex);
+			if (changed) {
+				dict_hdr_crypt_status_update(&mtr, st);
+			}
 		}
 
+		mtr.commit();
 		*err = DB_SUCCESS;
 	}
 
@@ -3963,22 +3990,13 @@ func_exit:
 
 /*============================ FILE I/O ================================*/
 
-/********************************************************************//**
-NOTE: you must call fil_mutex_enter_and_prepare_for_io() first!
 
-Prepares a file node for i/o. Opens the file if it is closed. Updates the
-pending i/o's field in the node and the system appropriately. Takes the node
-off the LRU list if it is in the LRU list. The caller must hold the fil_sys
-mutex.
-@return false if the file can't be opened, otherwise true */
-static
-bool
-fil_node_prepare_for_io(
-/*====================*/
-	fil_node_t*	node,	/*!< in: file node */
-	fil_space_t*	space)	/*!< in: space */
+/** Prepare a file for I/O, by opening the file if needed.
+@return	whether the file was found valid */
+inline fil_node_t::detect_t fil_node_t::prepare_for_io()
 {
-	ut_ad(node && space);
+	/* NOTE: you must call fil_mutex_enter_and_prepare_for_io() first! */
+	ut_ad(space);
 	ut_ad(mutex_own(&fil_system.mutex));
 
 	if (fil_system.n_open > srv_max_n_open_files + 5) {
@@ -3986,24 +4004,26 @@ fil_node_prepare_for_io(
 			<< " exceeds the limit " << srv_max_n_open_files;
 	}
 
-	if (!node->is_open()) {
-		/* File is closed: open it */
-		ut_a(node->n_pending == 0);
+	detect_t detect = DETECT_VALID;
 
-		if (!fil_node_open_file(node)) {
-			return(false);
+	if (!is_open()) {
+		/* File is closed: open it */
+		ut_a(n_pending == 0);
+
+		detect = fil_node_open_file(this);
+		if (detect == DETECT_INVALID) {
+			goto func_exit;
 		}
 	}
 
-	if (node->n_pending == 0 && fil_space_belongs_in_lru(space)) {
+	if (n_pending++ == 0 && fil_space_belongs_in_lru(space)) {
 		/* The node is in the LRU list, remove it */
 		ut_a(UT_LIST_GET_LEN(fil_system.LRU) > 0);
-		UT_LIST_REMOVE(fil_system.LRU, node);
+		UT_LIST_REMOVE(fil_system.LRU, this);
 	}
 
-	node->n_pending++;
-
-	return(true);
+func_exit:
+	return detect;
 }
 
 /** Update the data structures when an i/o operation finishes.
@@ -4229,7 +4249,8 @@ fil_io(
 	}
 
 	/* Open file if closed */
-	if (!fil_node_prepare_for_io(node, space)) {
+	fil_node_t::detect_t detect = node->prepare_for_io();
+	if (detect == fil_node_t::DETECT_INVALID) {
 		if (fil_type_is_data(space->purpose)
 		    && fil_is_user_tablespace_id(space->id)) {
 			mutex_exit(&fil_system.mutex);
@@ -4278,7 +4299,7 @@ fil_io(
 	}
 
 	/* Now we have made the changes in the data structures of fil_system */
-	mutex_exit(&fil_system.mutex);
+	fil_system_exit_and_update(detect);
 
 	if (!zip_size) zip_size = srv_page_size;
 
@@ -5077,13 +5098,13 @@ fil_space_set_punch_hole(
 	node->space->punch_hole = val;
 }
 
-inline void fil_system_t::crypt_enlist(bool encrypted)
+inline bool fil_system_t::crypt_enlist(bool encrypted)
 {
 	ut_ad(is_initialised());
 	ut_ad(this == &fil_system);
 
 	if (srv_read_only_mode) {
-		return;
+		return false;
 	}
 
 	ut_ad(mutex_own(&mutex));
@@ -5119,50 +5140,49 @@ inline void fil_system_t::crypt_enlist(bool encrypted)
 		}
 	}
 
-	if (status == crypt_status) {
-		return;
-	}
-
+	bool changed = status != crypt_status;
 	crypt_status = status;
-
-	if (!srv_startup_is_before_trx_rollback_phase) {
-		mutex_exit(&mutex);
-		dict_hdr_crypt_status_update(status);
-		mutex_enter(&mutex);
-	}
+	return changed;
 }
 
-/** Add the space to encrypted or unencrypted list. */
-void fil_space_t::crypt_enlist()
+/** Add the space to encrypted or unencrypted list.
+@return whether dict_hdr_crypt_status_update() must be called */
+bool fil_space_t::crypt_enlist()
 {
 	ut_ad(mutex_own(&fil_system.mutex));
 
 	if (srv_operation != SRV_OPERATION_NORMAL) {
-		return;
+		return false;
 	}
 
 	if (!crypt_data || !crypt_data->min_key_version) {
 		if (add_if_not_in_unencrypted_spaces()) {
 			remove_if_in_encrypted_spaces();
-			fil_system.crypt_enlist(false);
+			return fil_system.crypt_enlist(false);
 		}
 	} else {
 		if (add_if_not_in_encrypted_spaces()) {
 			remove_if_in_unencrypted_spaces();
-			fil_system.crypt_enlist(true);
+			return fil_system.crypt_enlist(true);
 		}
 	}
+
+	return false;
 }
 
-/** Remove the space from encrypted or unencrypted list. */
-inline void fil_space_t::crypt_delist()
+/** Remove the space from encrypted or unencrypted list.
+@return whether dict_hdr_crypt_status_update() must be called */
+inline bool fil_space_t::crypt_delist()
 {
 	if (srv_operation != SRV_OPERATION_NORMAL) {
-		return;
+		return false;
 	}
 
-	if (!remove_if_in_encrypted_spaces()
-	    && !remove_if_in_unencrypted_spaces()) {
-		ut_ad(size == 0);
+	if (remove_if_in_encrypted_spaces()
+	    || remove_if_in_unencrypted_spaces()) {
+		return true;
 	}
+
+	ut_ad(size == 0);
+	return false;
 }
