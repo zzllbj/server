@@ -18,14 +18,10 @@
 #include <my_global.h>
 #include <string.h>
 
-#ifdef HAVE_YASSL
-#include "yassl.cc"
-#else
 #include <openssl/evp.h>
 #include <openssl/aes.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
-#endif
 
 #include <my_crypt.h>
 #include <ssl_compat.h>

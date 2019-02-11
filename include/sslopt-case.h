@@ -29,11 +29,8 @@
       One can disable SSL later by using --skip-ssl or --ssl=0
     */
       opt_use_ssl= 1;
-    /* crl has no effect in yaSSL */  
-#ifdef HAVE_YASSL
       opt_ssl_crl= NULL;
       opt_ssl_crlpath= NULL;
-#endif
       break;
 #endif
 #endif /* SSLOPT_CASE_INCLUDED */

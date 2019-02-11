@@ -17,7 +17,7 @@
 #include <openssl/opensslv.h>
 
 /* OpenSSL version specific definitions */
-#if !defined(HAVE_YASSL) && defined(OPENSSL_VERSION_NUMBER)
+#if defined(OPENSSL_VERSION_NUMBER)
 
 #if (OPENSSL_VERSION_NUMBER >= 0x10002000L && !defined(LIBRESSL_VERSION_NUMBER)) || defined (HAVE_WOLFSSL)
 #define HAVE_X509_check_host 1
@@ -49,18 +49,18 @@
 
 #else
 #define HAVE_OPENSSL10 1
+#ifdef HAVE_WOLFSSL
+#define SSL_LIBRARY "WolfSSL " WOLFSSL_VERSION
+#else
 #define SSL_LIBRARY SSLeay_version(SSLEAY_VERSION)
+#endif
 
 #ifdef HAVE_ERR_remove_thread_state
 #define ERR_remove_state(X) ERR_remove_thread_state(NULL)
 #endif /* HAVE_ERR_remove_thread_state */
 
 #endif /* HAVE_OPENSSL11 */
-
-#elif defined(HAVE_YASSL)
-#define SSL_LIBRARY "YaSSL " YASSL_VERSION
-#define BN_free(X) do { } while(0)
-#endif /* !defined(HAVE_YASSL) */
+#endif
 
 #ifdef HAVE_WOLFSSL
 #define EVP_MD_CTX_SIZE                 sizeof(wc_Md5)
