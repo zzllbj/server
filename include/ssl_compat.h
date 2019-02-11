@@ -19,7 +19,7 @@
 /* OpenSSL version specific definitions */
 #if !defined(HAVE_YASSL) && defined(OPENSSL_VERSION_NUMBER)
 
-#if OPENSSL_VERSION_NUMBER >= 0x10002000L && !defined(LIBRESSL_VERSION_NUMBER)
+#if (OPENSSL_VERSION_NUMBER >= 0x10002000L && !defined(LIBRESSL_VERSION_NUMBER)) || defined (HAVE_WOLFSSL)
 #define HAVE_X509_check_host 1
 #endif
 
@@ -62,14 +62,25 @@
 #define BN_free(X) do { } while(0)
 #endif /* !defined(HAVE_YASSL) */
 
+#ifdef HAVE_WOLFSSL
+#define EVP_MD_CTX_SIZE                 sizeof(wc_Md5)
+#undef ERR_remove_state
+#define ERR_remove_state(x) do {}while(0)
+#endif
+
 #ifndef HAVE_OPENSSL11
+#ifndef ASN1_STRING_get0_data
 #define ASN1_STRING_get0_data(X)        ASN1_STRING_data(X)
+#endif
+#ifndef EVP_MD_CTX_SIZE
+#define EVP_MD_CTX_SIZE                 sizeof(EVP_MD_CTX)
+#endif
+
 #define OPENSSL_init_ssl(X,Y)           SSL_library_init()
 #define DH_set0_pqg(D,P,Q,G)            ((D)->p= (P), (D)->g= (G))
 #define EVP_CIPHER_CTX_buf_noconst(ctx) ((ctx)->buf)
 #define EVP_CIPHER_CTX_encrypting(ctx)  ((ctx)->encrypt)
 #define EVP_CIPHER_CTX_SIZE             sizeof(EVP_CIPHER_CTX)
-#define EVP_MD_CTX_SIZE                 sizeof(EVP_MD_CTX)
 
 #define EVP_MD_CTX_reset(X) EVP_MD_CTX_cleanup(X)
 #define EVP_CIPHER_CTX_reset(X) EVP_CIPHER_CTX_cleanup(X)

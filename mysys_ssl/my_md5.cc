@@ -48,6 +48,24 @@ static void md5_result(EVP_MD_CTX *context, uchar digest[MD5_HASH_SIZE])
 {
     context->Final((TaoCrypt::byte *) digest);
 }
+#elif defined(HAVE_WOLFSSL)
+#include <wolfssl/wolfcrypt/md5.h>
+#include <ssl_compat.h>
+typedef wc_Md5 EVP_MD_CTX;
+static void md5_init(EVP_MD_CTX *context)
+{
+  wc_InitMd5(context);;
+}
+
+static void md5_input(EVP_MD_CTX *context, const uchar *buf, unsigned len)
+{
+  wc_Md5Update(context, buf, len);
+}
+
+static void md5_result(EVP_MD_CTX *context, uchar digest[MD5_HASH_SIZE])
+{
+  wc_Md5Final(context,digest);
+}
 
 #elif defined(HAVE_OPENSSL)
 #include <openssl/evp.h>
