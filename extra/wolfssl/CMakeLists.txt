@@ -26,7 +26,6 @@ SET(WOLFSSL_SOURCES
    ${WOLFSSL_SRCDIR}/crl.c
    ${WOLFSSL_SRCDIR}/internal.c
    ${WOLFSSL_SRCDIR}/keys.c
-  #${WOLFSSL_SRCDIR}/sniffer.c
    ${WOLFSSL_SRCDIR}/tls.c
    ${WOLFSSL_SRCDIR}/wolfio.c
    ${WOLFSSL_SRCDIR}/ocsp.c
@@ -41,6 +40,22 @@ IF(WIN32)
 ENDIF()
 
 ADD_CONVENIENCE_LIBRARY(wolfssl ${WOLFSSL_SOURCES})
+
+# Workaround linker crash with older Linux binutils
+# e.g aborting at ../../bfd/merge.c line 873 in _bfd_merged_section_offset
+IF(CMAKE_C_COMPILER_ID MATCHES "GNU" AND (CMAKE_SYSTEM_NAME MATCHES "Linux"))
+ IF("${CMAKE_C_COMPILER_VERSION}" VERSION_LESS  4.8.0)
+   # Workaround linker crash on aes-t on older Ubuntu
+   STRING(REPLACE "-g " "-g1 " CMAKE_C_FLAGS_RELWITHDEBINFO 
+     ${CMAKE_C_FLAGS_RELWITHDEBINFO})
+   STRING(REPLACE "-g " "-g1 " CMAKE_C_FLAGS_DEBUG 
+     ${CMAKE_C_FLAGS_DEBUG})
+   STRING(REPLACE "-ggdb3 " " " CMAKE_C_FLAGS_RELWITHDEBINFO 
+     ${CMAKE_C_FLAGS_RELWITHDEBINFO})
+   STRING(REPLACE "-ggdb3 " " " CMAKE_C_FLAGS_DEBUG 
+     ${CMAKE_C_FLAGS_DEBUG})
+ ENDIF()
+ENDIF()
 
 IF(MSVC)
   # macro redefinition WOLFSSL_HAVE_MIN,  size_t to long truncation
