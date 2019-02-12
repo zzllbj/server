@@ -1460,7 +1460,7 @@ scheduler_functions *thread_scheduler= &thread_scheduler_struct,
 
 #ifdef HAVE_OPENSSL
 #include <openssl/crypto.h>
-#ifdef HAVE_OPENSSL10
+#if defined(HAVE_OPENSSL10) && !defined(HAVE_WOLFSSL)
 typedef struct CRYPTO_dynlock_value
 {
   mysql_rwlock_t lock;
@@ -2100,7 +2100,7 @@ static void clean_up_mutexes()
   mysql_mutex_destroy(&LOCK_global_index_stats);
 #ifdef HAVE_OPENSSL
   mysql_mutex_destroy(&LOCK_des_key_file);
-#ifdef HAVE_OPENSSL10
+#if defined(HAVE_OPENSSL10) && !defined(HAVE_WOLFSSL)
   for (int i= 0; i < CRYPTO_num_locks(); ++i)
     mysql_rwlock_destroy(&openssl_stdlocks[i].lock);
   OPENSSL_free(openssl_stdlocks);
@@ -4495,7 +4495,7 @@ static int init_thread_environment()
 #ifdef HAVE_OPENSSL
   mysql_mutex_init(key_LOCK_des_key_file,
                    &LOCK_des_key_file, MY_MUTEX_INIT_FAST);
-#ifdef HAVE_OPENSSL10
+#if defined(HAVE_OPENSSL10) && !defined(HAVE_WOLFSSL)
   openssl_stdlocks= (openssl_lock_t*) OPENSSL_malloc(CRYPTO_num_locks() *
                                                      sizeof(openssl_lock_t));
   for (int i= 0; i < CRYPTO_num_locks(); ++i)
@@ -4541,7 +4541,7 @@ static int init_thread_environment()
 }
 
 
-#ifdef HAVE_OPENSSL10
+#if defined(HAVE_OPENSSL10) && !defined(HAVE_WOLFSSL)
 static openssl_lock_t *openssl_dynlock_create(const char *file, int line)
 {
   openssl_lock_t *lock= new openssl_lock_t;
@@ -7299,10 +7299,14 @@ static int show_ssl_get_verify_mode(THD *thd, SHOW_VAR *var, char *buff,
 {
   var->type= SHOW_LONG;
   var->value= buff;
+#ifndef HAVE_WOLFSSL
   if( thd->net.vio && thd->net.vio->ssl_arg )
     *((long *)buff)= (long)SSL_get_verify_mode((SSL*)thd->net.vio->ssl_arg);
   else
     *((long *)buff)= 0;
+#else
+  *((long *)buff)= 0;
+#endif
   return 0;
 }
 

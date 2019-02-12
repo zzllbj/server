@@ -55,7 +55,10 @@
 #define SSL_LIBRARY SSLeay_version(SSLEAY_VERSION)
 #endif
 
-#ifdef HAVE_ERR_remove_thread_state
+#ifdef HAVE_WOLFSSL
+#undef ERR_remove_state
+#define ERR_remove_state(x) do {} while(0)
+#elif defined (HAVE_ERR_remove_thread_state)
 #define ERR_remove_state(X) ERR_remove_thread_state(NULL)
 #endif /* HAVE_ERR_remove_thread_state */
 
@@ -64,8 +67,6 @@
 
 #ifdef HAVE_WOLFSSL
 #define EVP_MD_CTX_SIZE                 sizeof(wc_Md5)
-#undef ERR_remove_state
-#define ERR_remove_state(x) do {}while(0)
 #endif
 
 #ifndef HAVE_OPENSSL11
