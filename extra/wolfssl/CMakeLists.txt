@@ -1,0 +1,123 @@
+# CMakeLists.txt
+#
+# Copyright (C) 2006-2015 wolfSSL Inc.
+#
+# This file is part of wolfSSL. (formerly known as CyaSSL)
+#
+# wolfSSL is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# wolfSSL is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
+
+SET(WOLFSSL_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl/src)
+ADD_DEFINITIONS(${SSL_DEFINES})
+ADD_DEFINITIONS(
+  -DWOLFSSL_MYSQL_COMPATIBLE
+  -DHAVE_ECC
+  -DECC_TIMING_RESISTANT
+  -DBUILDING_WOLFSSL
+  -DHAVE_HASHDRBG
+  -DWOLFSSL_AES_DIRECT
+  -DWOLFSSL_SHA384
+  -DWOLFSSL_SHA512
+  -DWOLFSSL_SHA224
+  -DSESSION_CERT
+  -DKEEP_OUR_CERT
+  -DWOLFSSL_STATIC_RSA
+  -DWC_RSA_BLINDING
+  -DHAVE_TLS_EXTENSIONS
+  -DHAVE_AES_ECB
+  -DWOLFSSL_AES_COUNTER
+  -DNO_WOLFSSL_STUB)
+
+SET(WOLFSSL_SOURCES  
+   ${WOLFSSL_SRCDIR}/crl.c
+   ${WOLFSSL_SRCDIR}/internal.c
+   ${WOLFSSL_SRCDIR}/keys.c
+   ${WOLFSSL_SRCDIR}/tls.c
+   ${WOLFSSL_SRCDIR}/wolfio.c
+   ${WOLFSSL_SRCDIR}/ocsp.c
+   ${WOLFSSL_SRCDIR}/ssl.c)
+ADD_DEFINITIONS(-DWOLFSSL_LIB)
+INCLUDE_DIRECTORIES(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl)
+IF(MSVC)
+  # size_t to long truncation warning
+  ADD_DEFINITIONS(-wd4267)
+  IF(CMAKE_C_COMPILER_ID MATCHES Clang)
+    # Workaround a bug with clang-cl, see https://github.com/wolfSSL/wolfssl/pull/2090
+    ADD_DEFINITIONS(-DMP_16BIT)
+  ENDIF()
+ENDIF()
+
+
+ADD_CONVENIENCE_LIBRARY(wolfssl ${WOLFSSL_SOURCES})
+
+# Workaround linker crash with older Ubuntu binutils
+# e.g aborting at ../../bfd/merge.c line 873 in _bfd_merged_section_offset
+IF((CMAKE_SYSTEM_NAME MATCHES "Linux") AND (CMAKE_LINKER STREQUAL "/usr/bin/ld"))
+ EXECUTE_PROCESS(COMMAND ${CMAKE_LINKER} -v OUTPUT_VARIABLE LINKER_VERSION_STR)
+ STRING(REGEX MATCH "[0-9]+\\.[0-9]+" LINKER_VERSION
+  "${LINKER_VERSION_STR}")
+ IF(LINKER_VERSION AND (LINKER_VERSION VERSION_LESS 2.25))
+   STRING(REPLACE "-g " "-g1 " CMAKE_C_FLAGS_RELWITHDEBINFO 
+     ${CMAKE_C_FLAGS_RELWITHDEBINFO})
+   STRING(REPLACE "-g " "-g1 " CMAKE_C_FLAGS_DEBUG 
+     ${CMAKE_C_FLAGS_DEBUG})
+   STRING(REPLACE "-ggdb3 " " " CMAKE_C_FLAGS_RELWITHDEBINFO 
+     ${CMAKE_C_FLAGS_RELWITHDEBINFO})
+   STRING(REPLACE "-ggdb3 " " " CMAKE_C_FLAGS_DEBUG 
+     ${CMAKE_C_FLAGS_DEBUG})
+ ENDIF()
+ENDIF()
+
+
+SET(WOLFCRYPT_SRCDIR ${CMAKE_CURRENT_SOURCE_DIR}/wolfssl/wolfcrypt/src)
+SET(WOLFCRYPT_SOURCES
+${WOLFCRYPT_SRCDIR}/aes.c
+${WOLFCRYPT_SRCDIR}/arc4.c
+${WOLFCRYPT_SRCDIR}/asn.c
+#${WOLFCRYPT_SRCDIR}/blake2b.c
+#${WOLFCRYPT_SRCDIR}/camellia.c
+#${WOLFCRYPT_SRCDIR}/chacha.c
+${WOLFCRYPT_SRCDIR}/coding.c
+#${WOLFCRYPT_SRCDIR}/compress.c
+${WOLFCRYPT_SRCDIR}/des3.c
+${WOLFCRYPT_SRCDIR}/dh.c
+${WOLFCRYPT_SRCDIR}/dsa.c
+${WOLFCRYPT_SRCDIR}/ecc.c
+${WOLFCRYPT_SRCDIR}/error.c
+#${WOLFCRYPT_SRCDIR}/hc128.c
+${WOLFCRYPT_SRCDIR}/hmac.c
+${WOLFCRYPT_SRCDIR}/integer.c
+${WOLFCRYPT_SRCDIR}/logging.c
+#${WOLFCRYPT_SRCDIR}/md2.c
+${WOLFCRYPT_SRCDIR}/md4.c
+${WOLFCRYPT_SRCDIR}/md5.c
+${WOLFCRYPT_SRCDIR}/memory.c
+#${WOLFCRYPT_SRCDIR}/pkcs7.c
+${WOLFCRYPT_SRCDIR}/pkcs12.c
+#${WOLFCRYPT_SRCDIR}/poly1305.c
+${WOLFCRYPT_SRCDIR}/pwdbased.c
+${WOLFCRYPT_SRCDIR}/rabbit.c
+${WOLFCRYPT_SRCDIR}/random.c
+#${WOLFCRYPT_SRCDIR}/ripemd.c
+${WOLFCRYPT_SRCDIR}/rsa.c
+${WOLFCRYPT_SRCDIR}/sha.c
+${WOLFCRYPT_SRCDIR}/sha256.c
+${WOLFCRYPT_SRCDIR}/sha512.c
+#${WOLFCRYPT_SRCDIR}/tfm.c
+${WOLFCRYPT_SRCDIR}/wc_port.c
+${WOLFCRYPT_SRCDIR}/wc_encrypt.c
+${WOLFCRYPT_SRCDIR}/hash.c
+${WOLFCRYPT_SRCDIR}/wolfmath.c)
+ADD_CONVENIENCE_LIBRARY(wolfcrypt ${WOLFCRYPT_SOURCES})
+
