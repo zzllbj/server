@@ -1813,7 +1813,7 @@ select table_name, column_name, min_value, max_value, nulls_ratio, avg_length, a
 DECODE_HISTOGRAM(hist_type, histogram)
 from mysql.column_stats;
 table_name	column_name	min_value	max_value	nulls_ratio	avg_length	avg_frequency	DECODE_HISTOGRAM(hist_type, histogram)
-t1	id	111	17026	0.0000	4.0000	1.0047	0.039,0.098,0.055,0.118,0.078,0.157,0.082,0.118,0.094,0.063,0.098
+t1	id	111	17026	0.0000	4.0000	1004.7393	0.039,0.098,0.055,0.118,0.078,0.157,0.082,0.118,0.094,0.063,0.098
 #
 # This query will show a better avg_frequency value.
 #
@@ -1826,7 +1826,7 @@ select table_name, column_name, min_value, max_value, nulls_ratio, avg_length, a
 DECODE_HISTOGRAM(hist_type, histogram)
 from mysql.column_stats;
 table_name	column_name	min_value	max_value	nulls_ratio	avg_length	avg_frequency	DECODE_HISTOGRAM(hist_type, histogram)
-t1	id	1	17384	0.0000	4.0000	3.5736	0.082,0.086,0.086,0.082,0.086,0.145,0.086,0.086,0.082,0.086,0.090
+t1	id	1	17384	0.0000	4.0000	14.2943	0.082,0.086,0.086,0.082,0.086,0.145,0.086,0.086,0.082,0.086,0.090
 set analyze_sample_percentage=0;
 #
 # Test self adjusting sampling level.
@@ -1839,7 +1839,7 @@ select table_name, column_name, min_value, max_value, nulls_ratio, avg_length, a
 DECODE_HISTOGRAM(hist_type, histogram)
 from mysql.column_stats;
 table_name	column_name	min_value	max_value	nulls_ratio	avg_length	avg_frequency	DECODE_HISTOGRAM(hist_type, histogram)
-t1	id	1	17384	0.0000	4.0000	7.4523	0.082,0.090,0.086,0.082,0.086,0.145,0.086,0.082,0.086,0.086,0.086
+t1	id	1	17384	0.0000	4.0000	13.9816	0.082,0.090,0.086,0.082,0.086,0.145,0.086,0.082,0.086,0.086,0.086
 #
 # Test record estimation is working properly.
 #
