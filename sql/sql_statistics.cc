@@ -2591,7 +2591,8 @@ void Column_statistics_collected::finish(ha_rows rows, double sample_fraction)
           distincts_single_occurence+= 1;
         if (nulls)
           distincts+= 1;
-        double fraction_single_occurence= distincts_single_occurence / rows;
+        double fraction_single_occurence=
+          static_cast<double>(distincts_single_occurence) / rows;
         double total_number_of_rows= rows / sample_fraction;
         double estimate_total_distincts= total_number_of_rows /
                 (distincts /
