@@ -810,7 +810,9 @@ loop:
 			happen when InnoDB was killed while it was
 			writing redo log. We simply treat this as an
 			abrupt end of the redo log. */
+fail:
 			end_lsn = *start_lsn;
+			success = false;
 			break;
 		}
 
@@ -832,9 +834,7 @@ loop:
 					    << log_block_get_checkpoint_no(buf)
 					    << " expected: " << crc
 					    << " found: " << cksum;
-				end_lsn = *start_lsn;
-				success = false;
-				break;
+				goto fail;
 			}
 
 			if (is_encrypted()) {
@@ -848,8 +848,7 @@ loop:
 		    || (dl > OS_FILE_LOG_BLOCK_SIZE - LOG_BLOCK_TRL_SIZE
 			&& dl != OS_FILE_LOG_BLOCK_SIZE)) {
 			recv_sys->found_corrupt_log = true;
-			end_lsn = *start_lsn;
-			break;
+			goto fail;
 		}
 	}
 
