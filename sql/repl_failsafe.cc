@@ -161,6 +161,15 @@ err:
 }
 
 
+bool THD::is_binlog_dump_thread()
+{
+  mysql_mutex_lock(&LOCK_thd_data);
+  bool res= slave_info;
+  mysql_mutex_unlock(&LOCK_thd_data);
+  return res;
+}
+
+
 static my_bool show_slave_hosts_callback(THD *thd, Protocol *protocol)
 {
   my_bool res= FALSE;

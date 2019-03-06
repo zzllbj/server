@@ -1561,6 +1561,12 @@ static my_bool kill_all_threads(THD *thd, void *)
 }
 
 
+static my_bool kill_all_but_binlog_dump_threads(THD *thd, void *)
+{
+  return thd->is_binlog_dump_thread() ? FALSE : kill_all_threads(thd, 0);
+}
+
+
 static my_bool warn_threads_still_active(THD *thd, void *)
 {
   sql_print_warning("%s: Thread %llu (user : '%s') did not exit\n", my_progname,
@@ -1568,6 +1574,12 @@ static my_bool warn_threads_still_active(THD *thd, void *)
                     (thd->main_security_ctx.user ?
                      thd->main_security_ctx.user : ""));
   return 0;
+}
+
+
+static my_bool warn_all_but_binlog_dump_threads_still_active(THD *thd, void *)
+{
+  return thd->is_binlog_dump_thread() ? FALSE : warn_threads_still_active(thd, 0);
 }
 
 
@@ -1693,7 +1705,7 @@ static void close_connections(void)
     This will give the threads some time to gracefully abort their
     statements and inform their clients that the server is about to die.
   */
-  server_threads.iterate(kill_all_threads);
+  server_threads.iterate(kill_all_but_binlog_dump_threads);
 
   Events::deinit();
   slave_prepare_for_shutdown();
@@ -1716,11 +1728,11 @@ static void close_connections(void)
   */
   DBUG_PRINT("info", ("thread_count: %u", uint32_t(thread_count)));
 
-  for (int i= 0; thread_count && i < 1000; i++)
+  for (int i= 0; (thread_count - binlog_dump_thread_count) && i < 1000; i++)
     my_sleep(20000);
 
   if (global_system_variables.log_warnings)
-    server_threads.iterate(warn_threads_still_active);
+    server_threads.iterate(warn_all_but_binlog_dump_threads_still_active);
 
 #ifdef WITH_WSREP
   if (wsrep_inited == 1)
@@ -1732,8 +1744,18 @@ static void close_connections(void)
   DBUG_PRINT("quit", ("Waiting for threads to die (count=%u)",
                       uint32_t(thread_count)));
 
+  while (thread_count - binlog_dump_thread_count)
+    my_sleep(1000);
+
+  /* Kill binlog dump threads */
+  server_threads.iterate(kill_all_threads);
+  for (int i= 0; thread_count && i < 1000; i++)
+    my_sleep(20000);
+  if (global_system_variables.log_warnings)
+    server_threads.iterate(warn_threads_still_active);
   while (thread_count)
     my_sleep(1000);
+  /* End of kill binlog dump threads */
 
   DBUG_PRINT("quit",("close_connections thread"));
   DBUG_VOID_RETURN;

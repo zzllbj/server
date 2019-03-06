@@ -4820,6 +4820,7 @@ public:
 
   int register_slave(uchar *packet, size_t packet_length);
   void unregister_slave();
+  bool is_binlog_dump_thread();
 #endif
 
   inline ulong wsrep_binlog_format() const
