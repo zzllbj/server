@@ -506,6 +506,22 @@ static enum enum_binlog_checksum_alg get_binlog_checksum_value_at_connect(THD * 
   DBUG_RETURN(ret);
 }
 
+
+/**
+  Set current_linfo
+
+  Setting current_linfo needs to be done with LOCK_thd_data to ensure that
+  adjust_linfo_offsets doesn't use a structure that may be deleted.
+*/
+
+void THD::set_current_linfo(LOG_INFO *linfo)
+{
+  mysql_mutex_lock(&LOCK_thd_data);
+  current_linfo= linfo;
+  mysql_mutex_unlock(&LOCK_thd_data);
+}
+
+
 /*
   Adjust the position pointer in the binary log file for all running slaves
 
@@ -2127,7 +2143,7 @@ static int init_binlog_sender(binlog_send_info *info,
   linfo->pos= *pos;
 
   // note: publish that we use file, before we open it
-  thd->current_linfo= linfo;
+  thd->set_current_linfo(linfo);
 
   if (check_start_offset(info, linfo->log_file_name, *pos))
     return 1;
@@ -3952,7 +3968,7 @@ bool mysql_show_binlog_events(THD* thd)
       goto err;
     }
 
-    thd->current_linfo= &linfo;
+    thd->set_current_linfo(&linfo);
 
     if ((file=open_binlog(&log, linfo.log_file_name, &errmsg)) < 0)
       goto err;
