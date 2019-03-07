@@ -2548,8 +2548,12 @@ static bool check_prepared_statement(Prepared_statement *stmt)
     {
        if (lex->describe || lex->analyze_stmt)
        {
-         if (!lex->result &&
-             !(lex->result= new (stmt->mem_root) select_send(thd)))
+         /*
+            With EXPAIN (describe) and ANALYZE STATEMENT we ignore original
+            result sending class and always send special result set to the
+            client
+         */
+         if (!(lex->result= new (stmt->mem_root) select_send(thd)))
               DBUG_RETURN(TRUE);
          List<Item> field_list;
          res= thd->prepare_explain_fields(lex->result, &field_list,
