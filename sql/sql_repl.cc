@@ -2141,7 +2141,6 @@ static int init_binlog_sender(binlog_send_info *info,
 
   // set current pos too
   linfo->pos= *pos;
-
   // note: publish that we use file, before we open it
   thd->set_current_linfo(linfo);
 
@@ -2381,14 +2380,15 @@ static int send_format_descriptor_event(binlog_send_info *info, IO_CACHE *log,
   DBUG_RETURN(0);
 }
 
-static bool should_stop(binlog_send_info *info)
+static bool should_stop(binlog_send_info *info, bool kill_server_check= false)
 {
   return
-      info->net->error ||
-      info->net->vio == NULL ||
-      info->thd->killed ||
-      info->error != 0 ||
-      info->should_stop;
+    info->net->error ||
+    info->net->vio == NULL ||
+    (info->thd->killed &&
+     (info->thd->killed != KILL_SERVER || kill_server_check)) ||
+    info->error != 0 ||
+    info->should_stop;
 }
 
 /**
@@ -2409,7 +2409,7 @@ static int wait_new_events(binlog_send_info *info,         /* in */
                         &stage_master_has_sent_all_binlog_to_slave,
                         &old_stage);
 
-  while (!should_stop(info))
+  while (!should_stop(info, true))
   {
     *end_pos_ptr= mysql_bin_log.get_binlog_end_pos(binlog_end_pos_filename);
     if (strcmp(linfo->log_file_name, binlog_end_pos_filename) != 0)
@@ -2761,6 +2761,14 @@ void mysql_binlog_send(THD* thd, char* log_ident, my_off_t pos,
     info->error= ER_UNKNOWN_ERROR;
     goto err;
   }
+  DBUG_EXECUTE_IF("simulate_delay_at_shutdown",
+                 {
+                   const char act[]=
+                     "now "
+                     "WAIT_FOR greetings_from_kill_mysql";
+                   DBUG_ASSERT(!debug_sync_set_action(thd,
+                                                      STRING_WITH_LEN(act)));
+                 };);
 
   /*
     heartbeat_period from @master_heartbeat_period user variable

@@ -466,6 +466,7 @@ uint protocol_version;
 uint lower_case_table_names;
 ulong tc_heuristic_recover= 0;
 Atomic_counter<uint32_t> thread_count;
+bool shutdown_wait_for_slaves;
 int32 slave_open_temp_tables;
 ulong thread_created;
 ulong back_log, connect_timeout, concurrency, server_id;
@@ -1519,19 +1520,9 @@ static void end_ssl();
 ** Code to end mysqld
 ****************************************************************************/
 
-static my_bool kill_all_threads(THD *thd, void *)
+/* common callee of two shutdown phases */
+static my_bool kill_thread(THD *thd)
 {
-  DBUG_PRINT("quit", ("Informing thread %ld that it's time to die",
-                      (ulong) thd->thread_id));
-  /* We skip slave threads on this first loop through. */
-  if (thd->slave_thread)
-    return 0;
-
-  if (DBUG_EVALUATE_IF("only_kill_system_threads", !thd->system_thread, 0))
-    return 0;
-
-  thd->set_killed(KILL_SERVER_HARD);
-  MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
   if (WSREP(thd)) mysql_mutex_lock(&thd->LOCK_thd_data);
   mysql_mutex_lock(&thd->LOCK_thd_kill);
   if (thd->mysys_var)
@@ -1561,9 +1552,40 @@ static my_bool kill_all_threads(THD *thd, void *)
 }
 
 
-static my_bool kill_all_but_binlog_dump_threads(THD *thd, void *)
+/**
+  First shutdown everything but slave threads and binlog dump connections
+*/
+static my_bool kill_thread_phase_1(THD *thd, void *)
 {
-  return thd->is_binlog_dump_thread() ? FALSE : kill_all_threads(thd, 0);
+  DBUG_PRINT("quit", ("Informing thread %ld that it's time to die",
+                      (ulong) thd->thread_id));
+  if (thd->slave_thread || thd->is_binlog_dump_thread())
+    return 0;
+
+  if (DBUG_EVALUATE_IF("only_kill_system_threads", !thd->system_thread, 0))
+    return 0;
+
+  thd->set_killed(KILL_SERVER_HARD);
+  MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
+  return kill_thread(thd);
+}
+
+
+/**
+  Last shutdown binlog dump connections
+*/
+static my_bool kill_thread_phase_2(THD *thd, void *)
+{
+  if (shutdown_wait_for_slaves)
+  {
+    thd->set_killed(KILL_SERVER);
+  }
+  else
+  {
+    thd->set_killed(KILL_SERVER_HARD);
+    MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
+  }
+  return kill_thread(thd);
 }
 
 
@@ -1576,10 +1598,33 @@ static my_bool warn_threads_still_active(THD *thd, void *)
   return 0;
 }
 
-
-static my_bool warn_all_but_binlog_dump_threads_still_active(THD *thd, void *)
+/* associated with the kill thread phase 1 */
+static my_bool warn_threads_active_after_phase_1(THD *thd, void *)
 {
-  return thd->is_binlog_dump_thread() ? FALSE : warn_threads_still_active(thd, 0);
+  return !thd->is_binlog_dump_thread() ? warn_threads_still_active(thd, 0) : 0;
+}
+
+
+static my_bool warn_dump_thread_is_active(THD *thd)
+{
+  mysql_mutex_lock(&thd->LOCK_thd_data);
+  // dump thread may not have yet current_linfo set
+  sql_print_warning("Dump thread %llu last sent to server %lu "
+                    "binlog file:pos %s:%llu",
+                    thd->thread_id, thd->variables.server_id,
+                    thd->current_linfo ?
+                    my_basename(thd->current_linfo->log_file_name) : "NULL",
+                    thd->current_linfo ? thd->current_linfo->pos : 0);
+  mysql_mutex_unlock(&thd->LOCK_thd_data);
+
+  return 0;
+}
+
+
+/* associated with the kill thread phase 2 */
+static my_bool warn_threads_active_after_phase_2(THD *thd, void *)
+{
+  return thd->is_binlog_dump_thread() ?  warn_dump_thread_is_active(thd) : 0;
 }
 
 
@@ -1662,9 +1707,23 @@ void kill_mysql(THD *thd)
   {
     my_free(user);
   }
+
+  DBUG_EXECUTE_IF("mysql_admin_shutdown_wait_for_slaves",
+                  thd->lex->is_shutdown_wait_for_slaves= true;);
+  DBUG_EXECUTE_IF("simulate_delay_at_shutdown",
+                  {
+                    DBUG_ASSERT(binlog_dump_thread_count == 3);
+                    const char act[]=
+                      "now "
+                      "SIGNAL greetings_from_kill_mysql";
+                    DBUG_ASSERT(!debug_sync_set_action(thd,
+                                                       STRING_WITH_LEN(act)));
+                  };);
+
+  if (thd->lex->is_shutdown_wait_for_slaves)
+    shutdown_wait_for_slaves= true;
   break_connect_loop();
 }
-
 
 static void close_connections(void)
 {
@@ -1705,7 +1764,7 @@ static void close_connections(void)
     This will give the threads some time to gracefully abort their
     statements and inform their clients that the server is about to die.
   */
-  server_threads.iterate(kill_all_but_binlog_dump_threads);
+  server_threads.iterate(kill_thread_phase_1);
 
   Events::deinit();
   slave_prepare_for_shutdown();
@@ -1732,7 +1791,7 @@ static void close_connections(void)
     my_sleep(20000);
 
   if (global_system_variables.log_warnings)
-    server_threads.iterate(warn_all_but_binlog_dump_threads_still_active);
+    server_threads.iterate(warn_threads_active_after_phase_1);
 
 #ifdef WITH_WSREP
   if (wsrep_inited == 1)
@@ -1747,15 +1806,19 @@ static void close_connections(void)
   while (thread_count - binlog_dump_thread_count)
     my_sleep(1000);
 
-  /* Kill binlog dump threads */
-  server_threads.iterate(kill_all_threads);
-  for (int i= 0; thread_count && i < 1000; i++)
-    my_sleep(20000);
-  if (global_system_variables.log_warnings)
-    server_threads.iterate(warn_threads_still_active);
-  while (thread_count)
+  /* Kill phase 2 */
+  server_threads.iterate(kill_thread_phase_2);
+  for (uint64 i= 0; thread_count; i++)
+  {
+    /*
+      This time the warnings are emitted within the loop to provide a
+      dynamic view on the shutdown status through the errorlog.
+    */
+    if (global_system_variables.log_warnings > 2 && i % 60000 == 0)
+      server_threads.iterate(warn_threads_active_after_phase_2);
     my_sleep(1000);
-  /* End of kill binlog dump threads */
+  }
+  /* End of kill phase 2 */
 
   DBUG_PRINT("quit",("close_connections thread"));
   DBUG_VOID_RETURN;
