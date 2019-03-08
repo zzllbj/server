@@ -149,12 +149,13 @@ static wsrep_cb_status_t wsrep_apply_events(THD*        thd,
                    thd->wsrep_trx_meta.gtid.uuid,
                    thd->wsrep_trx_meta.gtid.seqno);
     thd->lex->current_select= 0;
+    /*
     if (!ev->when)
     {
       my_hrtime_t hrtime= my_hrtime();
       ev->when= hrtime_to_my_time(hrtime);
       ev->when_sec_part= hrtime_sec_part(hrtime);
-    }
+    }*/
 
     thd->variables.option_bits=
       (thd->variables.option_bits & ~OPTION_SKIP_REPLICATION) |
