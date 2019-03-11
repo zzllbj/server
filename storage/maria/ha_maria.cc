@@ -3457,6 +3457,21 @@ int maria_checkpoint_state(handlerton *hton, bool disabled)
 
 void maria_prepare_for_backup()
 {
+#ifdef NOT_YET
+  /*
+    We can't do this yet as ma_checkpoint_background() thread is using
+    variables from collect_tables() which checkpoint_execute would
+    destroy.  A future fix could be disable ma_checkpoint_background(), flush
+    all pages, execute checkpoint and then restart ma_checkpoint_background().
+  */
+  /* Do a checkpoint, which allows the backup to ignore old log files */
+  ma_checkpoint_execute(CHECKPOINT_FULL, FALSE);
+#endif
+
+  /*
+    Disable purge of log files during backup as we have to start redo
+    from last checkpoint.
+  */
   translog_disable_purge();
 }
 
