@@ -1,6 +1,5 @@
 --connection server_1
 
-call mtr.add_suppression("Dump thread [0-9]+ last sent to server [0-9]+ binlog file:pos .+");
 CREATE TABLE t1 (a INT) ENGINE=innodb;
 
 --save_master_pos

@@ -1521,7 +1521,7 @@ static void end_ssl();
 ****************************************************************************/
 
 /* common callee of two shutdown phases */
-static my_bool kill_thread(THD *thd)
+static void kill_thread(THD *thd)
 {
   if (WSREP(thd)) mysql_mutex_lock(&thd->LOCK_thd_data);
   mysql_mutex_lock(&thd->LOCK_thd_kill);
@@ -1548,7 +1548,6 @@ static my_bool kill_thread(THD *thd)
   }
   mysql_mutex_unlock(&thd->LOCK_thd_kill);
   if (WSREP(thd)) mysql_mutex_unlock(&thd->LOCK_thd_data);
-  return 0;
 }
 
 
@@ -1567,7 +1566,8 @@ static my_bool kill_thread_phase_1(THD *thd, void *)
 
   thd->set_killed(KILL_SERVER_HARD);
   MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
-  return kill_thread(thd);
+  kill_thread(thd);
+  return 0;
 }
 
 
@@ -1585,30 +1585,28 @@ static my_bool kill_thread_phase_2(THD *thd, void *)
     thd->set_killed(KILL_SERVER_HARD);
     MYSQL_CALLBACK(thread_scheduler, post_kill_notification, (thd));
   }
-  return kill_thread(thd);
-}
-
-
-static my_bool warn_threads_still_active(THD *thd, void *)
-{
-  sql_print_warning("%s: Thread %llu (user : '%s') did not exit\n", my_progname,
-                    (ulonglong) thd->thread_id,
-                    (thd->main_security_ctx.user ?
-                     thd->main_security_ctx.user : ""));
+  kill_thread(thd);
   return 0;
 }
+
 
 /* associated with the kill thread phase 1 */
 static my_bool warn_threads_active_after_phase_1(THD *thd, void *)
 {
-  return !thd->is_binlog_dump_thread() ? warn_threads_still_active(thd, 0) : 0;
+  if (!thd->is_binlog_dump_thread())
+    sql_print_warning("%s: Thread %llu (user : '%s') did not exit\n", my_progname,
+                      (ulonglong) thd->thread_id,
+                      (thd->main_security_ctx.user ?
+                       thd->main_security_ctx.user : ""));
+  return 0;
 }
 
 
-static my_bool warn_dump_thread_is_active(THD *thd)
+/* associated with the kill thread phase 2 */
+static my_bool warn_threads_active_after_phase_2(THD *thd, void *)
 {
   mysql_mutex_lock(&thd->LOCK_thd_data);
-  // dump thread may not have yet current_linfo set
+  // dump thread may not have yet (or already) current_linfo set
   sql_print_warning("Dump thread %llu last sent to server %lu "
                     "binlog file:pos %s:%llu",
                     thd->thread_id, thd->variables.server_id,
@@ -1618,13 +1616,6 @@ static my_bool warn_dump_thread_is_active(THD *thd)
   mysql_mutex_unlock(&thd->LOCK_thd_data);
 
   return 0;
-}
-
-
-/* associated with the kill thread phase 2 */
-static my_bool warn_threads_active_after_phase_2(THD *thd, void *)
-{
-  return thd->is_binlog_dump_thread() ?  warn_dump_thread_is_active(thd) : 0;
 }
 
 
@@ -1724,6 +1715,7 @@ void kill_mysql(THD *thd)
     shutdown_wait_for_slaves= true;
   break_connect_loop();
 }
+
 
 static void close_connections(void)
 {

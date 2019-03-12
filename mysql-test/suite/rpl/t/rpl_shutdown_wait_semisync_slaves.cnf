@@ -1,7 +1,6 @@
 !include ../my.cnf
 
 [mysqld.1]
-debug_dbug="+d,mysql_admin_shutdown_wait_for_slaves"
 log_warnings=3
 [mysqld.2]
 
