@@ -199,8 +199,6 @@ my @DEFAULT_SUITES= qw(
     sql_sequence-
     unit-
     vcol-
-    wsrep-
-    galera-
   );
 my $opt_suites;
 
