@@ -154,65 +154,6 @@ public:
 };
 
 
-/**
-  Session_tracker
-
-  This class holds an object each for all tracker classes and provides
-  methods necessary for systematic detection and generation of session
-  state change information.
-*/
-
-class Session_tracker
-{
-  Current_schema_tracker current_schema_tracker;
-  Session_state_change_tracker session_state_change_tracker;
-  State_tracker *m_trackers[SESSION_TRACKER_END];
-
-  /* The following two functions are private to disable copying. */
-  Session_tracker(Session_tracker const &other)
-  {
-    DBUG_ASSERT(FALSE);
-  }
-  Session_tracker& operator= (Session_tracker const &rhs)
-  {
-    DBUG_ASSERT(FALSE);
-    return *this;
-  }
-
-public:
-
-  Session_tracker();
-  ~Session_tracker() { deinit(); }
-
-  /* trick to make happy memory accounting system */
-  void deinit()
-  {
-    delete m_trackers[SESSION_SYSVARS_TRACKER];
-    m_trackers[SESSION_SYSVARS_TRACKER]= 0;
-    delete m_trackers[TRANSACTION_INFO_TRACKER];
-    m_trackers[TRANSACTION_INFO_TRACKER]= 0;
-  }
-
-  void enable(THD *thd);
-
-  /** Returns the pointer to the tracker object for the specified tracker. */
-  inline State_tracker *get_tracker(enum_session_tracker tracker) const
-  {
-    return m_trackers[tracker];
-  }
-
-  inline void mark_as_changed(THD *thd, enum enum_session_tracker tracker,
-                              LEX_CSTRING *data)
-  {
-    if (m_trackers[tracker]->is_enabled())
-      m_trackers[tracker]->mark_as_changed(thd, data);
-  }
-
-
-  void store(THD *thd, String *main_buf);
-};
-
-
 /*
   Transaction_state_tracker
 */
@@ -277,12 +218,17 @@ class Transaction_state_tracker : public State_tracker
   /** Helper function: turn table info into table access flag */
   enum_tx_state calc_trx_state(THD *thd, thr_lock_type l, bool has_trx);
 public:
-  /** Constructor */
-  Transaction_state_tracker(): tx_changed(TX_CHG_NONE),
-                               tx_curr_state(TX_EMPTY),
-                               tx_reported_state(TX_EMPTY),
-                               tx_read_flags(TX_READ_INHERIT),
-                               tx_isol_level(TX_ISOL_INHERIT) {}
+
+  bool enable(THD *thd)
+  {
+    m_enabled= false;
+    tx_changed= TX_CHG_NONE;
+    tx_curr_state= TX_EMPTY;
+    tx_reported_state= TX_EMPTY;
+    tx_read_flags= TX_READ_INHERIT;
+    tx_isol_level= TX_ISOL_INHERIT;
+    return State_tracker::enable(thd);
+  }
 
   bool update(THD *thd, set_var *var);
   bool store(THD *thd, String *buf);
@@ -337,6 +283,65 @@ private:
           ->X; } } while(0)
 #define SESSION_TRACKER_CHANGED(A,B,C) \
   thd->session_tracker.mark_as_changed(A,B,C)
+
+
+/**
+  Session_tracker
+
+  This class holds an object each for all tracker classes and provides
+  methods necessary for systematic detection and generation of session
+  state change information.
+*/
+
+class Session_tracker
+{
+  Current_schema_tracker current_schema_tracker;
+  Session_state_change_tracker session_state_change_tracker;
+  Transaction_state_tracker transaction_state_tracker;
+  State_tracker *m_trackers[SESSION_TRACKER_END];
+
+  /* The following two functions are private to disable copying. */
+  Session_tracker(Session_tracker const &other)
+  {
+    DBUG_ASSERT(FALSE);
+  }
+  Session_tracker& operator= (Session_tracker const &rhs)
+  {
+    DBUG_ASSERT(FALSE);
+    return *this;
+  }
+
+public:
+
+  Session_tracker();
+  ~Session_tracker() { deinit(); }
+
+  /* trick to make happy memory accounting system */
+  void deinit()
+  {
+    delete m_trackers[SESSION_SYSVARS_TRACKER];
+    m_trackers[SESSION_SYSVARS_TRACKER]= 0;
+  }
+
+  void enable(THD *thd);
+
+  /** Returns the pointer to the tracker object for the specified tracker. */
+  inline State_tracker *get_tracker(enum_session_tracker tracker) const
+  {
+    return m_trackers[tracker];
+  }
+
+  inline void mark_as_changed(THD *thd, enum enum_session_tracker tracker,
+                              LEX_CSTRING *data)
+  {
+    if (m_trackers[tracker]->is_enabled())
+      m_trackers[tracker]->mark_as_changed(thd, data);
+  }
+
+
+  void store(THD *thd, String *main_buf);
+};
+
 
 int session_tracker_init();
 #else
