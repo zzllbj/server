@@ -2145,13 +2145,34 @@ struct wait_for_commit
 
 extern "C" void my_message_sql(uint error, const char *str, myf MyFlags);
 
+
+/**
+  A wrapper around thread_count.
+
+  It must be specified as a first base class of THD, so that increment is
+  done before any other THD constructors and decrement - after any other THD
+  destructors.
+
+  Destructor unblocks close_conneciton() if there are no more THD's left.
+*/
+class THD_count
+{
+  THD *orig_thd;
+  THD_count();
+  ~THD_count();
+  friend class THD;
+};
+
+
 /**
   @class THD
   For each client connection we create a separate thread with THD serving as
   a thread/connection descriptor
 */
 
-class THD :public Statement,
+class THD: public THD_count, /* this must be first */
+           public Statement,
+
            /*
              This is to track items changed during execution of a prepared
              statement/stored procedure. It's created by
@@ -2175,19 +2196,6 @@ private:
 
   inline bool is_conventional() const
   { DBUG_ASSERT(0); return Statement::is_conventional(); }
-
-  void dec_thread_count(void)
-  {
-    DBUG_ASSERT(thread_count > 0);
-    thread_safe_decrement32(&thread_count);
-    signal_thd_deleted();
-  }
-
-
-  void inc_thread_count(void)
-  {
-    thread_safe_increment32(&thread_count);
-  }
 
 public:
   MDL_context mdl_context;
