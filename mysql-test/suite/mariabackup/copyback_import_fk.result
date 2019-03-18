@@ -1,0 +1,22 @@
+call mtr.add_suppression("InnoDB: Cannot delete tablespace");
+CREATE TABLE t2 (`id` INT PRIMARY KEY) ENGINE=INNODB;
+INSERT INTO t2 values(1);
+CREATE TABLE t1 (id INT, t2_id INT,
+INDEX par_ind (t2_id),
+FOREIGN KEY `fk_t2_id` (t2_id) REFERENCES t2(`id`)
+) ENGINE=INNODB;
+INSERT INTO t1 VALUES(2,1);
+# xtrabackup backup
+t1.ibd
+t2.ibd
+DROP TABLE t1;
+DROP TABLE t2;
+# xtrabackup prepare
+SELECT * FROM t2;
+id
+1
+SELECT * FROM t1;
+id	t2_id
+2	1
+DROP TABLE t1;
+DROP TABLE t2;

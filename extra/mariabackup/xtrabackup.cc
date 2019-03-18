@@ -114,6 +114,7 @@ my_bool xtrabackup_backup;
 my_bool xtrabackup_prepare;
 my_bool xtrabackup_copy_back;
 my_bool xtrabackup_move_back;
+my_bool xtrabackup_import;
 my_bool xtrabackup_decrypt_decompress;
 my_bool xtrabackup_print_param;
 
@@ -802,7 +803,7 @@ enum options_xtrabackup
   OPT_DEFAULTS_GROUP,
   OPT_CLOSE_FILES,
   OPT_CORE_FILE,
-
+  OPT_IMPORT,
   OPT_COPY_BACK,
   OPT_MOVE_BACK,
   OPT_GALERA_INFO,
@@ -959,6 +960,11 @@ struct my_option xb_client_options[] =
    "Use with caution, as it removes backup files.",
    (uchar *) &xtrabackup_move_back, (uchar *) &xtrabackup_move_back, 0,
    GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0},
+
+  { "import", OPT_IMPORT, "Import tablespaces from a partial backup."
+   "Has an effect only together with --copy-back or --move-back option",
+   (uchar *)&xtrabackup_import, (uchar *)&xtrabackup_import, 0,
+   GET_BOOL, NO_ARG, 0, 0, 0, 0, 0, 0 },
 
   {"galera-info", OPT_GALERA_INFO, "This options creates the "
    "xtrabackup_galera_info file which contains the local node state at "
@@ -4399,6 +4405,58 @@ fail_before_log_copying_thread_start:
 	return(true);
 }
 
+bool backup_is_partial()
+{
+	return  (xtrabackup_tables
+		|| xtrabackup_tables_file
+		|| xtrabackup_databases
+		|| xtrabackup_databases_file
+		|| xtrabackup_tables_exclude
+		|| xtrabackup_databases_exclude
+		);
+}
+std::map<std::string, std::string> partial_backup_tables;
+
+static void add_partial_backup_tblname(const std::string& name, ulint id)
+{
+	if (fil_is_user_tablespace_id(id) && backup_is_partial()) {
+		size_t pos = name.find('/');
+		ut_a(pos != std::string::npos);
+		std::string dbname = name.substr(0,pos);
+		dbname = ut_get_name(0, dbname.c_str());
+		std::string quoted_name = ut_get_name(0, name.c_str());
+		partial_backup_tables[quoted_name] = dbname;
+	}
+}
+
+
+static void get_partial_backup_ddl(std::string &create_text, std::string &import_text)
+{
+	std::string discard_tablespace;
+	create_text.append("SET FOREIGN_KEY_CHECKS=0;\n");
+	for (std::map<std::string, std::string>::iterator it = partial_backup_tables.begin();
+		it != partial_backup_tables.end(); it++)
+	{
+		std::string db = it->second;
+		std::string tbl = it->first;
+
+		std::string query = "SHOW CREATE TABLE " + tbl;
+		MYSQL_ROW row;
+		MYSQL_RES* result = xb_mysql_query(mysql_connection, query.c_str(), true);
+		while ((row = mysql_fetch_row(result))) {
+			std::string ddl(row[1]);
+			ut_a(strncmp("CREATE ", row[1], 7) == 0);
+			ddl = std::string("CREATE OR REPLACE ") + ddl.substr(7);
+			create_text.append("USE ").append(db).append(";\n");
+			create_text.append(ddl).append(";\n");
+			discard_tablespace.append("ALTER TABLE ").append(tbl).append(" DISCARD TABLESPACE").append(";\n");
+			import_text.append("ALTER TABLE ").append(tbl).append(" IMPORT TABLESPACE").append(";\n");
+		}
+		mysql_free_result(result);
+	}
+	create_text.append(discard_tablespace);
+	create_text.append("SET FOREIGN_KEY_CHECKS=1;\n");
+}
 
 /**
 This function handles DDL changes at the end of backup, under protection of
@@ -4451,6 +4509,7 @@ void backup_fix_ddl(void)
 			if (has_optimized_ddl) {
 				new_tables.insert(name);
 			}
+			add_partial_backup_tblname(name, id);
 			continue;
 		}
 
@@ -4466,7 +4525,8 @@ void backup_fix_ddl(void)
 				/* Renamed, and no optimized DDL*/
 				renamed_tables[name] = new_name;
 			}
-		} else if (has_optimized_ddl) {
+		}
+		else if (has_optimized_ddl) {
 			/* Table was recreated, or optimized DDL ran.
 			In both cases we need a full copy in the backup.*/
 			new_tables.insert(name);
@@ -4488,6 +4548,8 @@ void backup_fix_ddl(void)
 
 		if (ddl_tracker.drops.find(id) == ddl_tracker.drops.end()) {
 			dropped_tables.erase(name);
+			if (check_if_skip_table(name.c_str()))
+				continue;
 			new_tables.insert(name);
 		}
 	}
@@ -4559,10 +4621,33 @@ void backup_fix_ddl(void)
 			continue;
 		std::string dest_name(node->space->name);
 		dest_name.append(".new");
+		add_partial_backup_tblname(node->space->name, space->id);
 		xtrabackup_copy_datafile(node, 0, dest_name.c_str()/*, do_full_copy ? ULONGLONG_MAX:UNIV_PAGE_SIZE */);
 	}
 
 	datafiles_iter_free(it);
+	if (backup_is_partial()) {
+		for (space_id_to_name_t::iterator
+			iter = ddl_tracker.tables_in_backup.begin();
+			iter != ddl_tracker.tables_in_backup.end();
+			iter++) {
+			std::string name = iter->second;
+			ulint id = iter->first;
+			bool dropped = dropped_tables.find(name) != dropped_tables.end();
+			bool renamed = renamed_tables.find(name) != renamed_tables.end();
+			if (!dropped) {
+				if (!renamed)
+					add_partial_backup_tblname(name, id);
+				else
+					add_partial_backup_tblname(renamed_tables[name], id);
+			}
+		}
+		std::string create_text;
+		std::string import_text;
+		get_partial_backup_ddl(create_text, import_text);
+		backup_file_printf("partial_create.sql", "%s", create_text.c_str());
+		backup_file_printf("partial_import.sql", "%s", import_text.c_str());
+	}
 }
 
 /* ================= prepare ================= */
@@ -6408,11 +6493,15 @@ static int main_low(char** argv)
 	}
 
 	if (xtrabackup_copy_back || xtrabackup_move_back) {
-		if (!check_if_param_set("datadir")) {
-			mysql_data_home = get_default_datadir();
+		if (xtrabackup_import) {
+			copy_back_import();
+		} else {
+			if (!check_if_param_set("datadir")) {
+				mysql_data_home = get_default_datadir();
+			}
+			if (!copy_back())
+				return(EXIT_FAILURE);
 		}
-		if (!copy_back())
-			return(EXIT_FAILURE);
 	}
 
 	if (xtrabackup_decrypt_decompress && !decrypt_decompress()) {

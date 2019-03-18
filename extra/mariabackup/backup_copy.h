@@ -41,6 +41,7 @@ bool
 apply_log_finish();
 bool
 copy_back();
+void copy_back_import();
 bool
 decrypt_decompress();
 bool

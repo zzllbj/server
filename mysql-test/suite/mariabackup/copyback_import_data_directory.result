@@ -1,0 +1,13 @@
+CREATE TABLE t(a INT) ENGINE=InnoDB DATA DIRECTORY='table_data_dir';
+INSERT INTO t VALUES(1);
+# xtrabackup backup
+DROP TABLE t;
+SHOW CREATE TABLE t;
+Table	Create Table
+t	CREATE TABLE `t` (
+  `a` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 DATA DIRECTORY='table_data_dir/'
+SELECT * FROM t;
+a
+1
+DROP TABLE t;

@@ -1,0 +1,37 @@
+#--source include/innodb_page_size.inc
+
+# Export single table from backup
+# (xtrabackup with --prepare --export)
+
+CREATE TABLE t1(i INT) ENGINE INNODB;
+INSERT INTO t1 VALUES(1);
+CREATE TABLE t21(i INT) ENGINE INNODB;
+INSERT INTO t21 VALUES(1);
+
+CREATE TABLE t2(i int) ENGINE INNODB;
+
+echo # xtrabackup backup;
+
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
+--disable_result_log
+# Test renames before of after copying tablespaces
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup "--tables=test.*1" --target-dir=$targetdir;
+--enable_result_log
+list_files $targetdir/test *.ibd;
+
+DROP TABLE t1;
+INSERT INTO t21 VALUES(2);
+
+echo # xtrabackup prepare;
+--disable_result_log
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --defaults-group-suffix=.1 --prepare --export --target-dir=$targetdir;
+--enable_result_log
+--disable_result_log
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --defaults-group-suffix=.1 --copy-back --import --target-dir=$targetdir;
+--enable_result_log
+
+SELECT * FROM t1;
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t21;
+rmdir $targetdir;

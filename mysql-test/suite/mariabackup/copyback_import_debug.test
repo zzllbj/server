@@ -1,0 +1,41 @@
+--source include/have_debug.inc
+
+# Export single table from backup
+# (xtrabackup with --prepare --export)
+
+CREATE TABLE t1(i INT) ENGINE INNODB;
+INSERT INTO t1 VALUES(1);
+CREATE TABLE t21(i INT) ENGINE INNODB;
+INSERT INTO t21 VALUES(1);
+
+CREATE TABLE t2(i int) ENGINE INNODB;
+CREATE TABLE t51(i int) ENGINE INNODB;
+
+echo # xtrabackup backup;
+
+let $targetdir=$MYSQLTEST_VARDIR/tmp/backup;
+--let before_copy_test_t21= CREATE TABLE test.t41 (i int) ENGINE INNODB; 
+--let after_copy_test_t21=RENAME TABLE  test.t21 TO test.t31;
+--let before_copy_test_t1=DROP TABLE test.t51;
+--disable_result_log
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf  --backup "--tables=test.*1" --target-dir=$targetdir --dbug=+d,mariabackup_events;
+--enable_result_log
+list_files $targetdir/test *.ibd;
+
+DROP TABLE t1;
+DROP TABLE t31;
+
+echo # xtrabackup prepare;
+--disable_result_log
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --defaults-group-suffix=.1 --prepare --export --target-dir=$targetdir;
+--enable_result_log
+
+exec $XTRABACKUP --defaults-file=$MYSQLTEST_VARDIR/my.cnf --defaults-group-suffix=.1 --copy-back --import --target-dir=$targetdir;
+
+
+SELECT * FROM t1;
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t31;
+DROP TABLE t41;
+rmdir $targetdir;

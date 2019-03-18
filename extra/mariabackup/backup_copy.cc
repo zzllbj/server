@@ -58,6 +58,7 @@ this program; if not, write to the Free Software Foundation, Inc.,
 #include "backup_mysql.h"
 #include <btr0btr.h>
 #include "xb0xb.h"
+#include <fstream>
 
 #define ROCKSDB_BACKUP_DIR "#rocksdb"
 
@@ -1192,9 +1193,8 @@ copy_or_move_file(const char *src_file_path,
 
 		free(ibd_filepath);
 	}
-
 	/* check if there is .isl file */
-	if (ends_with(src_file_path, ".ibd")) {
+	else if (ends_with(src_file_path, ".ibd") || ends_with(src_file_path,".cfg")) {
 		char *link_filepath;
 		const char *filepath;
 
@@ -1207,8 +1207,8 @@ copy_or_move_file(const char *src_file_path,
 
 		if (filepath != NULL) {
 			dirname_part(filedir, filepath, &filedir_len);
-
-			dst_file_path = filepath + filedir_len;
+			if (!ends_with(src_file_path, ".cfg"))
+				dst_file_path = filepath + filedir_len;
 			dst_dir = filedir;
 
 			if (!directory_exists(dst_dir, true)) {
@@ -1235,8 +1235,6 @@ cleanup:
 
 	return(ret);
 }
-
-
 
 
 static
@@ -1710,6 +1708,93 @@ apply_log_finish()
 	}
 
 	return(true);
+}
+
+static void execute_script(MYSQL *mysql, const char *path)
+{
+	std::string line;
+	std::ifstream infile(path);
+	std::string query;
+
+	while (std::getline(infile, line))
+	{
+		query += line;
+		if (line.length() && line[line.length() - 1] == ';')
+		{
+			msg("Execute %s", query.c_str());
+			xb_mysql_query(mysql, query.c_str(), true, true);
+			query = "";
+		}
+	}
+}
+
+void import_copy_back_files(const char *innodb_home)
+{
+	datadir_iter_t *it = NULL;
+	datadir_node_t node;
+	bool ret;
+	ds_data = ds_create(innodb_home, DS_TYPE_LOCAL);
+	it = datadir_iter_new(".", false);
+	datadir_node_init(&node);
+	while (datadir_iter_next(it, &node)) {
+		const char *ext_list[] = { ".ibd", ".cfg",NULL};
+		const char *filename;
+
+
+		/* create empty directories */
+		if (node.is_empty_dir) {
+			char path[FN_REFLEN];
+
+			snprintf(path, sizeof(path), "%s/%s",
+				mysql_data_home, node.filepath_rel);
+
+			msg("Creating directory %s", path);
+
+			if (mkdirp(path, 0777, MYF(0)) < 0) {
+				char errbuf[MYSYS_STRERROR_SIZE];
+				my_strerror(errbuf, sizeof(errbuf), my_errno);
+				die("Can not create directory %s: %s",
+					path, errbuf);
+			}
+
+			msg(" ...done.");
+
+			continue;
+		}
+
+		filename = base_name(node.filepath);
+
+		if (!filename_matches(filename, ext_list)) {
+			continue;
+		}
+
+
+		if (!(ret = copy_or_move_file(node.filepath, node.filepath_rel,
+					      innodb_home, 1))) {
+			die("Copy or move file failed");
+		}
+	}
+	datadir_iter_free(it);
+	datadir_node_free(&node);
+	ds_destroy(ds_data);
+}
+
+void copy_back_import()
+{
+	MYSQL* mysql = xb_mysql_connect();
+	if (my_setwd(xtrabackup_target_dir, MYF(MY_WME)))
+	{
+		die("Can't my_setwd %s", xtrabackup_target_dir);
+	}
+	execute_script(mysql, "partial_create.sql");
+	MYSQL_RES *res = xb_mysql_query(mysql, 
+		"SELECT IFNULL(@@innodb_data_home_dir,@@datadir)", true, true);
+	MYSQL_ROW row = mysql_fetch_row(res);
+	ut_a(row);
+	import_copy_back_files(row[0]);
+	mysql_free_result(res);
+	execute_script(mysql, "partial_import.sql");
+	mysql_close(mysql);
 }
 
 bool
