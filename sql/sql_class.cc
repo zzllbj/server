@@ -1211,6 +1211,9 @@ void THD::init(bool skip_lock)
   ::strmake(default_master_connection_buff,
             global_system_variables.default_master_connection.str,
             variables.default_master_connection.length);
+#ifndef EMBEDDED_LIBRARY
+  session_tracker.session_sysvars_tracker.configure();
+#endif
   if (!skip_lock)
     mysql_mutex_unlock(&LOCK_global_system_variables);
 
@@ -7314,12 +7317,11 @@ void THD::set_last_commit_gtid(rpl_gtid &gtid)
 #endif
   m_last_commit_gtid= gtid;
 #ifndef EMBEDDED_LIBRARY
-  if (changed_gtid &&
-      session_tracker.get_tracker(SESSION_SYSVARS_TRACKER)->is_enabled())
+  if (changed_gtid && session_tracker.session_sysvars_tracker.is_enabled())
   {
-    session_tracker.get_tracker(SESSION_SYSVARS_TRACKER)->
+    session_tracker.session_sysvars_tracker.
       mark_as_changed(this, (LEX_CSTRING*)Sys_last_gtid_ptr);
- }
+  }
 #endif
 }
 

@@ -131,8 +131,6 @@ class Session_sysvars_tracker: public State_tracker
       user.
     */
     HASH m_registered_sysvars;
-    /** Size of buffer for string representation */
-    size_t buffer_length;
     /**
       If TRUE then we want to check all session variable.
     */
@@ -165,14 +163,8 @@ class Session_sysvars_tracker: public State_tracker
                my_hash_element(&m_registered_sysvars, i));
     }
   public:
-    vars_list(): buffer_length(0), track_all(false) { init(); }
+    vars_list(): track_all(false) { init(); }
     ~vars_list() { free_hash(); }
-
-    size_t get_buffer_length()
-    {
-      DBUG_ASSERT(buffer_length != 0); // asked earlier then should
-      return buffer_length;
-    }
 
     sysvar_node_st *insert_or_search(const sys_var *svar)
     {
@@ -197,7 +189,7 @@ class Session_sysvars_tracker: public State_tracker
     }
     void copy(vars_list* from, THD *thd);
     bool parse_var_list(THD *thd, LEX_STRING var_list, bool throw_error,
-                        CHARSET_INFO *char_set, bool take_mutex);
+                        CHARSET_INFO *char_set);
     bool construct_var_list(char *buf, size_t buf_len);
     bool store(THD *thd, String *buf);
   };
@@ -206,17 +198,13 @@ class Session_sysvars_tracker: public State_tracker
     various operations.
   */
   vars_list orig_list;
+  char *session_track_system_variables;
 
 public:
-  size_t get_buffer_length()
-  {
-    return orig_list.get_buffer_length();
-  }
-  bool construct_var_list(char *buf, size_t buf_len)
-  {
-    return orig_list.construct_var_list(buf, buf_len);
-  }
+  Session_sysvars_tracker(): session_track_system_variables(0) {}
+  ~Session_sysvars_tracker() { my_free(session_track_system_variables); }
 
+  bool configure();
   bool enable(THD *thd);
   bool update(THD *thd, set_var *var);
   bool store(THD *thd, String *buf);
@@ -226,6 +214,7 @@ public:
                                 my_bool not_used __attribute__((unused)));
 
   friend bool sysvartrack_global_update(THD *thd, char *str, size_t len);
+  friend uchar *sysvartrack_session_value_ptr(THD *thd, const LEX_CSTRING *base);
 };
 
 
@@ -412,7 +401,6 @@ private:
 
 class Session_tracker
 {
-  Session_sysvars_tracker session_sysvars_tracker;
   Current_schema_tracker current_schema_tracker;
   Session_state_change_tracker session_state_change_tracker;
   Transaction_state_tracker transaction_state_tracker;
@@ -430,6 +418,8 @@ class Session_tracker
   }
 
 public:
+  Session_sysvars_tracker session_sysvars_tracker;
+
   Session_tracker()
   {
     m_trackers[SESSION_SYSVARS_TRACKER]= &session_sysvars_tracker;
