@@ -378,16 +378,9 @@ bool Session_sysvars_tracker::configure()
 
 bool Session_sysvars_tracker::enable(THD *thd)
 {
-  LEX_STRING tmp= { session_track_system_variables,
-                    safe_strlen(session_track_system_variables) };
   orig_list.reinit();
-  if (orig_list.parse_var_list(thd, tmp, true, thd->charset()) == true)
-  {
-    orig_list.reinit();
-    m_enabled= false;
-    return true;
-  }
-  m_enabled= true;
+  m_parsed= false;
+  m_enabled= session_track_system_variables && *session_track_system_variables;
   return false;
 }
 
@@ -423,6 +416,7 @@ bool Session_sysvars_tracker::update(THD *thd, set_var *var)
   if (tool_list.parse_var_list(thd, var->save_result.string_value, true,
                                thd->charset()))
     return true;
+  m_parsed= true;
   orig_list.copy(&tool_list, thd);
   orig_list.construct_var_list(session_track_system_variables,
                                var->save_result.string_value.length + 1);
@@ -530,6 +524,19 @@ void Session_sysvars_tracker::mark_as_changed(THD *thd,
 {
   sysvar_node_st *node;
   sys_var *svar= (sys_var *)var;
+
+  if (!m_parsed)
+  {
+    LEX_STRING tmp= { session_track_system_variables,
+                      safe_strlen(session_track_system_variables) };
+    if (orig_list.parse_var_list(thd, tmp, true, thd->charset()))
+    {
+      orig_list.reinit();
+      return;
+    }
+    m_parsed= true;
+  }
+
   /*
     Check if the specified system variable is being tracked, if so
     mark it as changed and also set the class's m_changed flag.

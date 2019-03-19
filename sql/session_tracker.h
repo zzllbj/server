@@ -199,6 +199,7 @@ class Session_sysvars_tracker: public State_tracker
   */
   vars_list orig_list;
   char *session_track_system_variables;
+  bool m_parsed;
 
 public:
   Session_sysvars_tracker(): session_track_system_variables(0) {}
