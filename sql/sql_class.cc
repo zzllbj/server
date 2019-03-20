@@ -634,7 +634,7 @@ THD_count::~THD_count()
 }
 
 
-THD::THD(my_thread_id id, bool is_wsrep_applier, bool skip_global_sys_var_lock):
+THD::THD(my_thread_id id, bool is_wsrep_applier):
    THD_count(),
    Statement(&main_lex, &main_mem_root, STMT_CONVENTIONAL_EXECUTION,
              /* statement id */ 0),
@@ -821,7 +821,7 @@ THD::THD(my_thread_id id, bool is_wsrep_applier, bool skip_global_sys_var_lock):
   /* Call to init() below requires fully initialized Open_tables_state. */
   reset_open_tables_state(this);
 
-  init(skip_global_sys_var_lock);
+  init();
 #if defined(ENABLED_PROFILING)
   profiling.set_thd(this);
 #endif
@@ -1194,11 +1194,10 @@ const Type_handler *THD::type_handler_for_date() const
   Init common variables that has to be reset on start and on change_user
 */
 
-void THD::init(bool skip_lock)
+void THD::init()
 {
   DBUG_ENTER("thd::init");
-  if (!skip_lock)
-    mysql_mutex_lock(&LOCK_global_system_variables);
+  mysql_mutex_lock(&LOCK_global_system_variables);
   plugin_thdvar_init(this);
   /*
     plugin_thd_var_init() sets variables= global_system_variables, which
@@ -1214,8 +1213,7 @@ void THD::init(bool skip_lock)
 #ifndef EMBEDDED_LIBRARY
   session_tracker.session_sysvars_tracker.configure();
 #endif
-  if (!skip_lock)
-    mysql_mutex_unlock(&LOCK_global_system_variables);
+  mysql_mutex_unlock(&LOCK_global_system_variables);
 
   user_time.val= start_time= start_time_sec_part= 0;
 
