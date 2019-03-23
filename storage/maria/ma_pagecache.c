@@ -2108,8 +2108,8 @@ restart:
 
         if (! pagecache->used_last)
         {
-          DBUG_PRINT("XXX", ("there is NOT UNUSED blocks"));
           struct st_my_thread_var *thread;
+          DBUG_PRINT("XXX", ("there is NOT UNUSED blocks"));
           /*
             Wait until a new block is added to the LRU chain;
             several threads might wait here for the same page,
@@ -4257,7 +4257,8 @@ my_bool pagecache_write_part(PAGECACHE *pagecache,
 
   if (file->big_block_read)
   {
-    DBUG_ASSERT(0);
+    //DBUG_ASSERT(0);
+    my_errno= HA_ERR_READ_ONLY_TRANSACTION;
     DBUG_RETURN(1);
   }
 

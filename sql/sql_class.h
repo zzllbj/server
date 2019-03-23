@@ -5611,6 +5611,8 @@ private:
 #else
 #undef USE_ARIA_FOR_TMP_TABLES
 #endif
+/* TODO: remove after big block tests */
+#undef USE_ARIA_FOR_TMP_TABLES
 
 #ifdef USE_ARIA_FOR_TMP_TABLES
 #define TMP_ENGINE_COLUMNDEF MARIA_COLUMNDEF
