@@ -86,9 +86,16 @@ typedef struct st_pagecache_io_hook_args
   uchar *crypt_buf; /* when using encryption */
 } PAGECACHE_IO_HOOK_ARGS;
 
+struct st_pagecache;
+
 /* file descriptor for Maria */
 typedef struct st_pagecache_file
 {
+  /* size n pages of first "page" (which is not a big block)  */
+  size_t  first_page;
+  /* size of a big block for S3 or 0 */
+  size_t big_block_size;
+  /* File number */
   File file;
 
   /** Cannot be NULL */
@@ -99,9 +106,19 @@ typedef struct st_pagecache_file
   my_bool (*pre_write_hook)(PAGECACHE_IO_HOOK_ARGS *args);
   void (*post_write_hook)(int error, PAGECACHE_IO_HOOK_ARGS *args);
 
-  /** Cannot be NULL */
   my_bool (*flush_log_callback)(PAGECACHE_IO_HOOK_ARGS *args);
 
+  /**
+    Function for reading file in big hunks from S3
+    Data will be filled with pointer and length to data read
+    start_page will be contain first page read.
+  */
+  my_bool (*big_block_read)(struct st_pagecache *pagecache,
+                            PAGECACHE_IO_HOOK_ARGS *args,
+                            struct st_pagecache_file *file, LEX_STRING *data);
+
+
+  /** Cannot be NULL */
   uchar *callback_data;
 } PAGECACHE_FILE;
 
@@ -122,6 +139,7 @@ typedef struct st_pagecache_hash_link PAGECACHE_HASH_LINK;
 #define PAGECACHE_PRIORITY_LOW 0
 #define PAGECACHE_PRIORITY_DEFAULT 3
 #define PAGECACHE_PRIORITY_HIGH 6
+
 
 /*
   The page cache structure
