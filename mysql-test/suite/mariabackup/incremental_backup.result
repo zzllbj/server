@@ -22,6 +22,7 @@ disconnect con1;
 # remove datadir
 # xtrabackup move back
 # restart server
+# restart
 SELECT * FROM t;
 i
 1

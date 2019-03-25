@@ -7,6 +7,7 @@ DROP TABLE t;
 # remove datadir
 # xtrabackup move back
 # restart server
+# restart
 SELECT * FROM t;
 a
 1

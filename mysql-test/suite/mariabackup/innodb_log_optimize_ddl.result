@@ -19,6 +19,7 @@ call a();
 # remove datadir
 # xtrabackup move back
 # restart server
+# restart
 DROP PROCEDURE a;
 CHECK TABLE tz,tr,td;
 Table	Op	Msg_type	Msg_text

@@ -5,4 +5,5 @@ CREATE TABLE ibd4(a INT UNIQUE)ENGINE=InnoDB;
 CREATE TABLE ibd4f(a INT UNIQUE)ENGINE=InnoDB;
 CREATE TABLE ibd5(a INT UNIQUE, b INT UNIQUE)ENGINE=InnoDB;
 # Kill the server
+# restart: with restart_parameters
 DROP TABLE t,ibd4,ibd4f,ibd5;

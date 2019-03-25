@@ -8,6 +8,7 @@ CREATE TABLE t5 (i int) ENGINE=INNODB;
 # remove datadir
 # xtrabackup move back
 # restart server
+# restart
 CREATE TABLE t1(i int);
 DROP TABLE t1;
 CREATE TABLE t2(i int);

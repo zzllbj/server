@@ -26,6 +26,7 @@ count(*)
 # remove datadir
 # xtrabackup move back
 # restart server
+# restart
 select count(*) from t7;
 count(*)
 7168

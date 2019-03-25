@@ -9,6 +9,7 @@ t1.new
 # remove datadir
 # xtrabackup move back
 # restart server
+# restart
 SELECT COUNT(*) from t1;
 COUNT(*)
 10000
