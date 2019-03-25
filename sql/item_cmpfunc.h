@@ -1588,29 +1588,28 @@ public:
 
 class cmp_item_int : public cmp_item_scalar
 {
-  longlong value;
+  Longlong_hybrid m_value;
 public:
-  cmp_item_int() {}                           /* Remove gcc warning */
+  cmp_item_int(): m_value(0, false) {}
   void store_value(Item *item)
   {
-    value= item->val_int();
+    m_value= item->to_longlong_hybrid();
     m_null_value= item->null_value;
   }
   int cmp_not_null(const Value *val)
   {
     DBUG_ASSERT(!val->is_null());
     DBUG_ASSERT(val->is_longlong());
-    return value != val->value.m_longlong;
+    return m_value.cmp(val->to_longlong_hybrid_native()) != 0;
   }
   int cmp(Item *arg)
   {
-    const bool rc= value != arg->val_int();
+    const bool rc= m_value.cmp(arg->to_longlong_hybrid()) != 0;
     return (m_null_value || arg->null_value) ? UNKNOWN : rc;
   }
   int compare(cmp_item *ci)
   {
-    cmp_item_int *l_cmp= (cmp_item_int *)ci;
-    return (value < l_cmp->value) ? -1 : ((value == l_cmp->value) ? 0 : 1);
+    return m_value.cmp(static_cast<cmp_item_int *>(ci)->m_value);
   }
   cmp_item *make_same();
 };
@@ -1989,11 +1988,16 @@ public:
     @param funcname        - the name of the operation, for error reporting
     @param args            - the owner function's argument list
     @param value_index     - the value position in args
+    @param prefer_predicant_type_handler
+                           - if the comparison should be done using
+                             the predicant type handler when possible,
+                             to use indexes more efficiently.
     @retval true           - could not add an element because of non-comparable
                              arguments (e.g. ROWs with size)
     @retval false          - a new element was successfully added.
   */
-  bool add_value(const char *funcname, Item_args *args, uint value_index);
+  bool add_value(const char *funcname, Item_args *args, uint value_index,
+                 bool prefer_predicant_type_handler);
 
   /**
     Add a new element into m_comparators[], ignoring explicit NULL values.
@@ -2001,7 +2005,8 @@ public:
   */
   bool add_value_skip_null(const char *funcname,
                            Item_args *args, uint value_index,
-                           bool *nulls_found);
+                           bool *nulls_found,
+                           bool prefer_predicant_type_handler);
 
   /**
     Signal "this" that there will be no new add_value*() calls,

@@ -489,6 +489,7 @@ SELECT id FROM t1 WHERE id IN(4564, (SELECT IF(1=0,1,1/0)) );
 id
 Warnings:
 Warning	1365	Division by 0
+Warning	1365	Division by 0
 DROP TABLE t1;
 End of 5.0 tests
 create table t1(f1 char(1));
@@ -909,3 +910,71 @@ Warnings:
 Warning	1292	Truncated incorrect time value: ''
 Warning	1292	Truncated incorrect time value: ''
 Warning	1292	Truncated incorrect time value: ''
+#
+# MDEV-18319 BIGINT UNSIGNED Performance issue
+#
+CREATE TABLE t1 (
+id bigint(20) unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY
+);
+FOR i IN 0..255
+DO
+INSERT INTO t1 VALUES ();
+END FOR
+$$
+SELECT MIN(id), MAX(id), COUNT(*) FROM t1;
+MIN(id)	MAX(id)	COUNT(*)
+1	256	256
+EXPLAIN SELECT id FROM t1 WHERE id IN (1,2);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (9223372036854775806, 9223372036854775807);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (9223372036854775807, 9223372036854775808);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (1.0,2.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (9223372036854775806.0, 9223372036854775807.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+# Cannot compare this as INT (yet)
+EXPLAIN SELECT id FROM t1 WHERE id IN (9223372036854775807.0, 9223372036854775808.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index	PRIMARY	PRIMARY	8	NULL	256	Using where; Using index
+DROP TABLE t1;
+CREATE TABLE t1 (
+id bigint(20) NOT NULL AUTO_INCREMENT PRIMARY KEY
+);
+FOR i IN 0..255
+DO
+INSERT INTO t1 VALUES ();
+END FOR
+$$
+SELECT MIN(id), MAX(id), COUNT(*) FROM t1;
+MIN(id)	MAX(id)	COUNT(*)
+1	256	256
+EXPLAIN SELECT id FROM t1 WHERE id IN (-1,-2);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (-9223372036854775806, -9223372036854775807);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (-9223372036854775807, -9223372036854775808);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (-1.0,-2.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (-9223372036854775806.0, -9223372036854775807.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+EXPLAIN SELECT id FROM t1 WHERE id IN (-9223372036854775807.0, -9223372036854775808.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	range	PRIMARY	PRIMARY	8	NULL	2	Using where; Using index
+# Cannot compare this as INT (yet)
+EXPLAIN SELECT id FROM t1 WHERE id IN (-9223372036854775808.0, -9223372036854775809.0);
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index	PRIMARY	PRIMARY	8	NULL	256	Using where; Using index
+DROP TABLE t1;

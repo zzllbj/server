@@ -3045,8 +3045,8 @@ bool Item_func_case_simple::prepare_predicant_and_values(THD *thd,
   for (uint i= 0 ; i < ncases; i++)
   {
     if (nulls_equal ?
-        add_value("case..when", this, i + 1) :
-        add_value_skip_null("case..when", this, i + 1, &have_null))
+        add_value("case..when", this, i + 1, false) :
+        add_value_skip_null("case..when", this, i + 1, &have_null, false))
       return true;
   }
   all_values_added(&tmp, &type_cnt, &m_found_types);
@@ -3739,7 +3739,8 @@ bool Predicant_to_list_comparator::alloc_comparators(THD *thd, uint nargs)
 
 bool Predicant_to_list_comparator::add_value(const char *funcname,
                                              Item_args *args,
-                                             uint value_index)
+                                             uint value_index,
+                                             bool prefer_predicant_type_handler)
 {
   DBUG_ASSERT(m_predicant_index < args->argument_count());
   DBUG_ASSERT(value_index < args->argument_count());
@@ -3747,10 +3748,44 @@ bool Predicant_to_list_comparator::add_value(const char *funcname,
   Item *tmpargs[2];
   tmpargs[0]= args->arguments()[m_predicant_index];
   tmpargs[1]= args->arguments()[value_index];
-  if (tmp.aggregate_for_comparison(funcname, tmpargs, 2, true))
+  if (tmp.aggregate_for_comparison(funcname, tmpargs, 2, false))
   {
     DBUG_ASSERT(current_thd->is_error());
     return true;
+  }
+  /*
+    Try to compare using type handler of the predicant when possible,
+    as this can use indexes for conditions like:
+      WHERE field IN (const1, .. constN)
+  */
+  if (prefer_predicant_type_handler &&
+      args->arguments()[value_index]->const_item() &&
+      !args->arguments()[value_index]->is_expensive() &&
+      tmp.type_handler()->cmp_type() == DECIMAL_RESULT &&
+      args->arguments()[m_predicant_index]->cmp_type() == INT_RESULT)
+  {
+    /*
+      For now we catch only one special case:
+      an INT predicant can be compared to a DECIMAL constant
+      using Longlong_hybrid comparison, when the DECIMAL constant:
+      a. has no significant fractional digits, and
+      b. is within the signed longlong range
+      For DECIMAL constants in the range LONGLONG_MAX..ULONGLONG_MAX
+      we cannot call to_longlong_hybrid() safely, because DECIMAL type
+      Items usually set their "unsigned_flag" to "false", so val_int()
+      will truncate such constants to LONGLONG_MAX (instead of ULONGLONG_MAX).
+      TODO: fix to_longlong_hybrid() for DECIMAL LONGLONG_MAX..ULONGLONG_MAX
+      TODO: move this code to Type_handler (will be done by MDEV-18898)
+      TODO: skip constants outside of LONGLONG_MIN..ULONGLONG_MAX, as
+            such conditon can never be true, e.g.:
+             WHERE int_expr IN (.. -9223372036854775809 ..)
+             WHERE int_expr IN (.. 18446744073709551616 ..)
+    */
+    my_decimal buf, *dec= args->arguments()[value_index]->val_decimal(&buf);
+    longlong res;
+    if (dec && decimal_actual_fraction(dec) == 0 &&
+        my_decimal2int(0, dec, false /*SIGNED*/, &res) == 0)
+      tmp.set_handler(&type_handler_longlong);
   }
   m_comparators[m_comparator_count].m_handler= tmp.type_handler();
   m_comparators[m_comparator_count].m_arg_index= value_index;
@@ -3759,10 +3794,13 @@ bool Predicant_to_list_comparator::add_value(const char *funcname,
 }
 
 
-bool Predicant_to_list_comparator::add_value_skip_null(const char *funcname,
-                                                       Item_args *args,
-                                                       uint value_index,
-                                                       bool *nulls_found)
+bool
+Predicant_to_list_comparator::add_value_skip_null(
+                                           const char *funcname,
+                                           Item_args *args,
+                                           uint value_index,
+                                           bool *nulls_found,
+                                           bool prefer_predicant_type_handler)
 {
   /*
     Skip explicit NULL constant items.
@@ -3775,7 +3813,7 @@ bool Predicant_to_list_comparator::add_value_skip_null(const char *funcname,
     *nulls_found= true;
     return false;
   }
-  return add_value(funcname, args, value_index);
+  return add_value(funcname, args, value_index, prefer_predicant_type_handler);
 }
 
 
@@ -4164,12 +4202,15 @@ void Item_func_in::fix_after_pullout(st_select_lex *new_parent, Item **ref,
 bool Item_func_in::prepare_predicant_and_values(THD *thd, uint *found_types)
 {
   uint type_cnt;
+  bool prefer_predicant_type_handler= all_items_are_consts(args + 1,
+                                                           arg_count - 1);
   have_null= false;
 
   add_predicant(this, 0);
   for (uint i= 1 ; i < arg_count; i++)
   {
-    if (add_value_skip_null(Item_func_in::func_name(), this, i, &have_null))
+    if (add_value_skip_null(Item_func_in::func_name(), this, i, &have_null,
+                            prefer_predicant_type_handler))
       return true;
   }
   all_values_added(&m_comparator, &type_cnt, found_types);

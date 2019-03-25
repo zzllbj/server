@@ -70,6 +70,11 @@ public:
   bool is_temporal() const { return m_type == DYN_COL_DATETIME; }
   bool is_string() const { return m_type == DYN_COL_STRING; }
   bool is_decimal() const { return m_type == DYN_COL_DECIMAL; }
+  Longlong_hybrid to_longlong_hybrid_native() const
+  {
+    DBUG_ASSERT(is_longlong());
+    return Longlong_hybrid(value.m_longlong, m_type == DYN_COL_UINT);
+  }
 };
 
 

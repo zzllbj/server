@@ -202,8 +202,8 @@ CREATE TABLE t1 (a INT UNSIGNED);
 SELECT a IN (1.0, 1) FROM t1;
 a IN (1.0, 1)
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=0 (decimal)
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
 Note	1105	DBUG: types_compatible=yes bisect=yes
 DROP TABLE t1;
 CREATE TABLE t1 (a INT);
@@ -224,14 +224,14 @@ Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (1.0, CAST(1 AS UNSIGNED)) FROM t1;
 a IN (1.0, CAST(1 AS UNSIGNED))
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=0 (decimal)
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
 Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (1.0, CAST(1 AS UNSIGNED),NULL) FROM t1;
 a IN (1.0, CAST(1 AS UNSIGNED),NULL)
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=0 (decimal)
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
 Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (1,2,3) FROM t1;
 a NOT IN (1,2,3)
@@ -250,14 +250,14 @@ Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (1.0, CAST(1 AS UNSIGNED)) FROM t1;
 a NOT IN (1.0, CAST(1 AS UNSIGNED))
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=0 (decimal)
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
 Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (1.0, CAST(1 AS UNSIGNED),NULL) FROM t1;
 a NOT IN (1.0, CAST(1 AS UNSIGNED),NULL)
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=0 (decimal)
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
 Note	1105	DBUG: types_compatible=yes bisect=yes
 DROP TABLE t1;
 CREATE TABLE t1 (a DOUBLE);
@@ -911,28 +911,28 @@ SELECT a IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED)) FROM t1;
 a IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED))
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL) FROM t1;
 a IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL)
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED)) FROM t1;
 a IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED))
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=1 (bigint)
-Note	1105	DBUG: [2] arg=3 handler=0 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: [2] arg=3 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL) FROM t1;
 a IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL)
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=1 (bigint)
-Note	1105	DBUG: [2] arg=3 handler=0 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: [2] arg=3 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (1,1e0) FROM t1;
 a NOT IN (1,1e0)
 Warnings:
@@ -949,52 +949,52 @@ SELECT a NOT IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED)) FROM t1;
 a NOT IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED))
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL) FROM t1;
 a NOT IN (CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL)
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED)) FROM t1;
 a NOT IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED))
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=1 (bigint)
-Note	1105	DBUG: [2] arg=3 handler=0 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: [2] arg=3 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL) FROM t1;
 a NOT IN (CAST(1 AS DECIMAL),CAST(1 AS SIGNED), CAST(1 AS UNSIGNED),NULL)
 Warnings:
-Note	1105	DBUG: [0] arg=1 handler=0 (decimal)
-Note	1105	DBUG: [1] arg=2 handler=1 (bigint)
-Note	1105	DBUG: [2] arg=3 handler=0 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: [2] arg=3 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (1,1.0) FROM t1;
 a IN (1,1.0)
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (1,1.0,NULL) FROM t1;
 a IN (1,1.0,NULL)
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (1,1.0) FROM t1;
 a NOT IN (1,1.0)
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a NOT IN (1,1.0,NULL) FROM t1;
 a NOT IN (1,1.0,NULL)
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=yes
 SELECT a IN (1,'1') FROM t1;
 a IN (1,'1')
 Warnings:
@@ -1613,8 +1613,8 @@ SELECT * FROM t1 WHERE -1 IN (a,b);
 a	b
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
-Note	1105	DBUG: types_compatible=no bisect=no
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
+Note	1105	DBUG: types_compatible=yes bisect=no
 DROP TABLE t1;
 #
 # MDEV-11554 Wrong result for CASE on a mixture of signed and unsigned expressions
@@ -1630,7 +1630,7 @@ c
 NULL
 Warnings:
 Note	1105	DBUG: [0] arg=1 handler=0 (bigint)
-Note	1105	DBUG: [1] arg=2 handler=1 (decimal)
+Note	1105	DBUG: [1] arg=2 handler=0 (bigint)
 DROP TABLE t1;
 #
 # MDEV-11555 CASE with a mixture of TIME and DATETIME returns a wrong result
