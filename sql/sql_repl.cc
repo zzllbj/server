@@ -31,6 +31,7 @@
 #include "debug_sync.h"
 #include "semisync_master.h"
 #include "semisync_slave.h"
+#include "mysys_err.h"
 
 enum enum_gtid_until_state {
   GTID_UNTIL_NOT_DONE,
@@ -4193,15 +4194,20 @@ void show_binlogs_get_fields(THD *thd, List<Item> *field_list)
 
   @retval FALSE success
   @retval TRUE failure
+
+  @notes
+    We only keep the index locked while reading all file names as
+    if there are 1000+ binary logs, there can be a serious impact
+    as getting the file sizes can take some notable time (up to 20 seconds
+    has been reported) and we don't want to block log rotations for that long.
 */
+
 bool show_binlogs(THD* thd)
 {
   IO_CACHE *index_file;
   LOG_INFO cur;
-  File file;
-  char fname[FN_REFLEN];
+  char *fname, *end_pos, *buff= 0;
   List<Item> field_list;
-  size_t length;
   size_t cur_dir_len;
   Protocol *protocol= thd->protocol;
   DBUG_ENTER("show_binlogs");
@@ -4228,13 +4234,27 @@ bool show_binlogs(THD* thd)
   cur_dir_len= dirname_length(cur.log_file_name);
 
   reinit_io_cache(index_file, READ_CACHE, (my_off_t) 0, 0, 0);
+  if (!(buff= (char*) my_malloc(index_file->end_of_file+1,
+				MYF(MY_THREAD_SPECIFIC | MY_WME))))
+    goto err_with_unlock;
+  if (my_b_read(index_file, (uchar*) buff, index_file->end_of_file))
+  {
+    my_error(EE_READ, MYF(ME_ERROR_LOG), my_filename(index_file->file),
+	     my_errno);
+    goto err_with_unlock;
+  }
+  buff[index_file->end_of_file]= 0;             // For strchr
+  mysql_bin_log.unlock_index();
 
   /* The file ends with EOF or empty line */
-  while ((length=my_b_gets(index_file, fname, sizeof(fname))) > 1)
+  for (fname= buff;
+       (end_pos= strchr(fname, '\n')) && (end_pos - fname) > 1;
+       fname= end_pos+1)
   {
+    size_t length= (size_t) (end_pos - fname);
     size_t dir_len;
     ulonglong file_length= 0;                   // Length if open fails
-    fname[--length] = '\0';                     // remove the newline
+    end_pos[0]= '\0';				// remove the newline
 
     protocol->prepare_for_resend();
     dir_len= dirname_length(fname);
@@ -4245,27 +4265,23 @@ bool show_binlogs(THD* thd)
       file_length= cur.pos;  /* The active log, use the active position */
     else
     {
-      /* this is an old log, open it and find the size */
-      if ((file= mysql_file_open(key_file_binlog,
-                                 fname, O_RDONLY | O_SHARE | O_BINARY,
-                                 MYF(0))) >= 0)
-      {
-        file_length= (ulonglong) mysql_file_seek(file, 0L, MY_SEEK_END, MYF(0));
-        mysql_file_close(file, MYF(0));
-      }
+      MY_STAT stat_info;
+      if (mysql_file_stat(key_file_binlog, fname, &stat_info, MYF(0)))
+	file_length= stat_info.st_size;
     }
     protocol->store(file_length);
     if (protocol->write())
       goto err;
   }
-  if (unlikely(index_file->error == -1))
-    goto err;
-  mysql_bin_log.unlock_index();
+  my_free(buff);
   my_eof(thd);
   DBUG_RETURN(FALSE);
 
-err:
+ err_with_unlock:
   mysql_bin_log.unlock_index();
+
+ err:
+  my_free(buff);
   DBUG_RETURN(TRUE);
 }
 
