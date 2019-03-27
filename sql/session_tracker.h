@@ -198,14 +198,11 @@ class Session_sysvars_tracker: public State_tracker
     various operations.
   */
   vars_list orig_list;
-  char *session_track_system_variables;
   bool m_parsed;
 
 public:
-  Session_sysvars_tracker(): session_track_system_variables(0) {}
-  ~Session_sysvars_tracker() { my_free(session_track_system_variables); }
-
-  bool configure();
+  void init(THD *thd);
+  void deinit(THD *thd);
   bool enable(THD *thd);
   bool update(THD *thd, set_var *var);
   bool store(THD *thd, String *buf);
@@ -215,13 +212,11 @@ public:
                                 my_bool not_used __attribute__((unused)));
 
   friend bool sysvartrack_global_update(THD *thd, char *str, size_t len);
-  friend uchar *sysvartrack_session_value_ptr(THD *thd, const LEX_CSTRING *base);
 };
 
 
 bool sysvartrack_validate_value(THD *thd, const char *str, size_t len);
 bool sysvartrack_global_update(THD *thd, char *str, size_t len);
-uchar *sysvartrack_session_value_ptr(THD *thd, const LEX_CSTRING *base);
 
 
 /**

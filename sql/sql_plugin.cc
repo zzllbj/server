@@ -3132,6 +3132,11 @@ void plugin_thdvar_init(THD *thd)
   thd->variables.enforced_table_plugin= NULL;
   cleanup_variables(&thd->variables);
 
+  /* This and all other variable cleanups are here for COM_CHANGE_USER :( */
+#ifndef EMBEDDED_LIBRARY
+  thd->session_tracker.session_sysvars_tracker.deinit(thd);
+#endif
+
   thd->variables= global_system_variables;
 
   /* we are going to allocate these lazily */
@@ -3153,6 +3158,9 @@ void plugin_thdvar_init(THD *thd)
   intern_plugin_unlock(NULL, old_enforced_table_plugin);
   mysql_mutex_unlock(&LOCK_plugin);
 
+#ifndef EMBEDDED_LIBRARY
+  thd->session_tracker.session_sysvars_tracker.init(thd);
+#endif
   DBUG_VOID_RETURN;
 }
 
@@ -3217,6 +3225,10 @@ void plugin_thdvar_cleanup(THD *thd)
   uint idx;
   plugin_ref *list;
   DBUG_ENTER("plugin_thdvar_cleanup");
+
+#ifndef EMBEDDED_LIBRARY
+  thd->session_tracker.session_sysvars_tracker.deinit(thd);
+#endif
 
   mysql_mutex_lock(&LOCK_plugin);
 

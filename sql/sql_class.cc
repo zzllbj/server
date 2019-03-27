@@ -1210,9 +1210,6 @@ void THD::init()
   ::strmake(default_master_connection_buff,
             global_system_variables.default_master_connection.str,
             variables.default_master_connection.length);
-#ifndef EMBEDDED_LIBRARY
-  session_tracker.session_sysvars_tracker.configure();
-#endif
   mysql_mutex_unlock(&LOCK_global_system_variables);
 
   user_time.val= start_time= start_time_sec_part= 0;
