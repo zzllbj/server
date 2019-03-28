@@ -868,15 +868,17 @@ struct binlog_file_entry
 {
   binlog_file_entry *next;
   char *name;
+  ulonglong size;
 };
 
 static binlog_file_entry *
-get_binlog_list(MEM_ROOT *memroot)
+get_binlog_list(MEM_ROOT *memroot,
+                bool reverse= true, bool no_lock= false, bool no_unlock= false)
 {
   IO_CACHE *index_file;
   char fname[FN_REFLEN];
   size_t length;
-  binlog_file_entry *current_list= NULL, *e;
+  binlog_file_entry *current_list= NULL, *current_link= NULL, *e;
   DBUG_ENTER("get_binlog_list");
 
   if (!mysql_bin_log.is_open())
@@ -885,7 +887,8 @@ get_binlog_list(MEM_ROOT *memroot)
     DBUG_RETURN(NULL);
   }
 
-  mysql_bin_log.lock_index();
+  if (!no_lock)
+    mysql_bin_log.lock_index();
   index_file=mysql_bin_log.get_index_file();
   reinit_io_cache(index_file, READ_CACHE, (my_off_t) 0, 0, 0);
 
@@ -899,10 +902,27 @@ get_binlog_list(MEM_ROOT *memroot)
       mysql_bin_log.unlock_index();
       DBUG_RETURN(NULL);
     }
-    e->next= current_list;
-    current_list= e;
+    if (reverse)
+    {
+      e->next= current_list;
+      current_list= e;
+    }
+    else
+    {
+      e->next= NULL;
+      if (!current_link)
+      {
+        current_link= current_list= e;
+      }
+      else
+      {
+        current_link->next= e;
+        current_link= e;
+      }
+    }
   }
-  mysql_bin_log.unlock_index();
+  if (!no_unlock)
+    mysql_bin_log.unlock_index();
 
   DBUG_RETURN(current_list);
 }
@@ -4204,12 +4224,12 @@ void show_binlogs_get_fields(THD *thd, List<Item> *field_list)
 
 bool show_binlogs(THD* thd)
 {
-  IO_CACHE *index_file;
   LOG_INFO cur;
-  char *fname, *end_pos, *buff= 0;
   List<Item> field_list;
-  size_t cur_dir_len;
   Protocol *protocol= thd->protocol;
+  MEM_ROOT memroot;
+  size_t cur_dir_len;
+
   DBUG_ENTER("show_binlogs");
 
   if (!mysql_bin_log.is_open())
@@ -4223,65 +4243,69 @@ bool show_binlogs(THD* thd)
   if (protocol->send_result_set_metadata(&field_list,
                             Protocol::SEND_NUM_ROWS | Protocol::SEND_EOF))
     DBUG_RETURN(TRUE);
-  
+
+  init_alloc_root(&memroot, "binlog_file_list",
+                  10*(FN_REFLEN+sizeof(binlog_file_entry)),
+                  0, MYF(MY_THREAD_SPECIFIC));
+do_list_again:
+
   mysql_mutex_lock(mysql_bin_log.get_log_lock());
-  mysql_bin_log.lock_index();
-  index_file=mysql_bin_log.get_index_file();
-  
-  mysql_bin_log.raw_get_current_log(&cur); // dont take mutex
+  mysql_bin_log.lock_index(); // unlocked in get_binlog_list()
+  mysql_bin_log.raw_get_current_log(&cur);
   mysql_mutex_unlock(mysql_bin_log.get_log_lock()); // lockdep, OK
-  
+
+  binlog_file_entry *list;
+  if (!(list= get_binlog_list(&memroot, false, true, false)))
+    goto err; // OOM is reported
+
+  DEBUG_SYNC(thd, "at_after_lock_index");
+
+  // the 1st loop computes the sizes all or nothing; it may fail then retries
   cur_dir_len= dirname_length(cur.log_file_name);
-
-  reinit_io_cache(index_file, READ_CACHE, (my_off_t) 0, 0, 0);
-  if (!(buff= (char*) my_malloc(index_file->end_of_file+1,
-				MYF(MY_THREAD_SPECIFIC | MY_WME))))
-    goto err_with_unlock;
-  if (my_b_read(index_file, (uchar*) buff, index_file->end_of_file))
+  for (binlog_file_entry* cur_link= list; cur_link; cur_link= cur_link->next)
   {
-    my_error(EE_READ, MYF(ME_ERROR_LOG), my_filename(index_file->file),
-	     my_errno);
-    goto err_with_unlock;
-  }
-  buff[index_file->end_of_file]= 0;             // For strchr
-  mysql_bin_log.unlock_index();
+    size_t length= strlen(cur_link->name);
+    char *fname= cur_link->name;
+    size_t dir_len= dirname_length(fname);
 
-  /* The file ends with EOF or empty line */
-  for (fname= buff;
-       (end_pos= strchr(fname, '\n')) && (end_pos - fname) > 1;
-       fname= end_pos+1)
-  {
-    size_t length= (size_t) (end_pos - fname);
-    size_t dir_len;
-    ulonglong file_length= 0;                   // Length if open fails
-    end_pos[0]= '\0';				// remove the newline
-
-    protocol->prepare_for_resend();
-    dir_len= dirname_length(fname);
     length-= dir_len;
-    protocol->store(fname + dir_len, length, &my_charset_bin);
-
-    if (!(strncmp(fname+dir_len, cur.log_file_name+cur_dir_len, length)))
-      file_length= cur.pos;  /* The active log, use the active position */
+    if (!(strncmp(fname+dir_len, cur.log_file_name + cur_dir_len, length)))
+      cur_link->size= cur.pos;  /* The active log, use the active position */
     else
     {
       MY_STAT stat_info;
       if (mysql_file_stat(key_file_binlog, fname, &stat_info, MYF(0)))
-	file_length= stat_info.st_size;
+      {
+	cur_link->size= stat_info.st_size;
+      }
+      else
+      {
+        free_root(&memroot, MYF(MY_MARK_BLOCKS_FREE));
+        goto do_list_again;
+      }
     }
-    protocol->store(file_length);
+  }
+
+  for (binlog_file_entry* cur_link= list; cur_link; cur_link= cur_link->next)
+  {
+    size_t length= strlen(cur_link->name);
+    char *fname= cur_link->name;
+    size_t dir_len= dirname_length(fname);
+
+    dir_len= dirname_length(fname);
+    length-= dir_len;
+    protocol->prepare_for_resend();
+    protocol->store(fname + dir_len, length, &my_charset_bin);
+    protocol->store(cur_link->size);
     if (protocol->write())
       goto err;
   }
-  my_free(buff);
+  free_root(&memroot, MYF(0));
   my_eof(thd);
   DBUG_RETURN(FALSE);
 
- err_with_unlock:
-  mysql_bin_log.unlock_index();
-
  err:
-  my_free(buff);
+  free_root(&memroot, MYF(0));
   DBUG_RETURN(TRUE);
 }
 
