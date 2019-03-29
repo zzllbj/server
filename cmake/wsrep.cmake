@@ -14,7 +14,16 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA 
 
-OPTION(WITH_WSREP "WSREP replication API (to use, e.g. Galera Replication library)" OFF)
+#
+# Galera library does not compile with windows
+#
+IF(UNIX)
+  SET(with_wsrep_default ON)
+ELSE()
+  SET(with_wsrep_default OFF)
+ENDIF()
+
+OPTION(WITH_WSREP "WSREP replication API (to use, e.g. Galera Replication library)" ${with_wsrep_default})
 
 # Set the patch version
 SET(WSREP_PATCH_VERSION "21")
