@@ -126,3 +126,38 @@ CREATE TABLE t2 (b INT, KEY(b)) ENGINE=InnoDB;
 INSERT INTO t2 VALUES(2);
 ALTER TABLE t2 ADD FOREIGN KEY(b) REFERENCES t1(a), LOCK=EXCLUSIVE;
 DROP TABLE t2, t1;
+
+
+--echo #
+--echo # MDEV-16060 - InnoDB: Failing assertion: ut_strcmp(index->name, key->name)
+--echo #
+--echo # Note: tests race codition, so repeat a few times.
+connect con1, localhost, root;
+CREATE TABLE t1 (`pk` INT PRIMARY KEY, f1 INT NOT NULL, INDEX ind_f1 (f1)) ENGINE=InnoDB;
+CREATE TABLE t2 (`pk` INT PRIMARY KEY, f2 INT NOT NULL, INDEX ind_f2 (f2)) ENGINE=InnoDB;
+CREATE TABLE t3 (`pk` INT PRIMARY KEY, f3 INT NOT NULL, INDEX ind_f3 (f3)) ENGINE=InnoDB;
+CREATE TABLE t4 (`pk` INT PRIMARY KEY, f4 INT NOT NULL, INDEX ind_f4 (f4)) ENGINE=InnoDB;
+CREATE TABLE t5 (`pk` INT PRIMARY KEY, f5 INT NOT NULL, INDEX ind_f5 (f5), FOREIGN KEY (`pk`) REFERENCES t4 (`pk`) ON DELETE CASCADE ON UPDATE CASCADE) ENGINE=InnoDB;
+
+let $i= 20;
+disable_query_log;
+while ($i)
+{
+  send ALTER TABLE t3 ADD CONSTRAINT fk3 FOREIGN KEY (`pk`) REFERENCES t5 (`pk`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+  connection default;
+  UPDATE IGNORE t4 SET f4 = 10 WHERE `pk` = 1;
+
+  connection con1;
+  reap;
+  ALTER TABLE t1 ADD CONSTRAINT fk1 FOREIGN KEY (f1) REFERENCES t2 (`pk`) ON DELETE CASCADE ON UPDATE CASCADE;
+  ALTER TABLE t3 DROP FOREIGN KEY fk3;
+  ALTER TABLE t1 DROP FOREIGN KEY fk1;
+  dec $i;
+}
+enable_query_log;
+
+# Cleanup
+disconnect con1;
+connection default;
+DROP TABLE t3, t1, t5, t4, t2;

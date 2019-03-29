@@ -100,3 +100,16 @@ CREATE TABLE t2 (b INT, KEY(b)) ENGINE=InnoDB;
 INSERT INTO t2 VALUES(2);
 ALTER TABLE t2 ADD FOREIGN KEY(b) REFERENCES t1(a), LOCK=EXCLUSIVE;
 DROP TABLE t2, t1;
+#
+# MDEV-16060 - InnoDB: Failing assertion: ut_strcmp(index->name, key->name)
+#
+# Note: tests race codition, so repeat a few times.
+connect con1, localhost, root;
+CREATE TABLE t1 (`pk` INT PRIMARY KEY, f1 INT NOT NULL, INDEX ind_f1 (f1)) ENGINE=InnoDB;
+CREATE TABLE t2 (`pk` INT PRIMARY KEY, f2 INT NOT NULL, INDEX ind_f2 (f2)) ENGINE=InnoDB;
+CREATE TABLE t3 (`pk` INT PRIMARY KEY, f3 INT NOT NULL, INDEX ind_f3 (f3)) ENGINE=InnoDB;
+CREATE TABLE t4 (`pk` INT PRIMARY KEY, f4 INT NOT NULL, INDEX ind_f4 (f4)) ENGINE=InnoDB;
+CREATE TABLE t5 (`pk` INT PRIMARY KEY, f5 INT NOT NULL, INDEX ind_f5 (f5), FOREIGN KEY (`pk`) REFERENCES t4 (`pk`) ON DELETE CASCADE ON UPDATE CASCADE) ENGINE=InnoDB;
+disconnect con1;
+connection default;
+DROP TABLE t3, t1, t5, t4, t2;
