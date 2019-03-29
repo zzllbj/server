@@ -2513,11 +2513,11 @@ static int find_uniq_filename(char *name, ulong min_log_number_to_use,
   length= (size_t) (end - start + 1);
 
   /* The following matches the code for my_dir () below */
-  DBUG_EXECUTE("error_unique_log_filename",
-               {
-                 strmov(end,".1");
-                 DBUG_RETURN(1);
-               });
+  DBUG_EXECUTE_IF("error_unique_log_filename",
+                  {
+                    strmov(end,".1");
+                    DBUG_RETURN(1);
+                  });
 
   if (*last_used_log_number)
     max_found= *last_used_log_number;

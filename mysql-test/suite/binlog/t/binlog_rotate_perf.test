@@ -25,20 +25,16 @@ show binary logs;
 
 # do batch flush and show
 let $loop_times= 100;
+--source include/show_master_status.inc
 while ($loop_times) {
---replace_column 2 #
-  show master status;
   flush logs;
---replace_column 2 #
-  show master status;
   flush logs;
---replace_column 2 #
-  show master status;
   if ($loop_times < 5)
   {
-    if ($loop_times == 4) {
---replace_column 2 #
-      show binary logs;
+    --source include/show_master_status.inc
+    if ($loop_times == 4)
+    {
+      --source include/show_binary_logs.inc
     }
     reset master;
   }
@@ -52,20 +48,14 @@ while ($loop_times) {
   --echo # left times= $loop_times
 }
 --echo # [engine=$engine] after first loop_times=$loop_times, show master logs results
---replace_column 2 #
-show master logs;
+--source include/show_binary_logs.inc
 
 # do batch flush and show with restart mysql
+--source include/show_master_status.inc
 let $loop_times= 10;
 while ($loop_times) {
---replace_column 2 #
-show master status;
   flush logs;
---replace_column 2 #
-show master status;
-flush logs;
---replace_column 2 #
-show master logs;
+  flush logs;
   --echo #begin to restart mysqld current loop_times=$loop_times
   --source include/restart_mysqld.inc
   #
@@ -73,6 +63,7 @@ show master logs;
   --echo # left restart times= $loop_times
 }
 --echo # [engine=$engine] after second loop_times=$loop_times, show master logs results
+--source include/show_binary_logs.inc
 
 
 # try to change the log-bin configs and restart
@@ -82,18 +73,17 @@ show master logs;
 --source include/restart_mysqld.inc
 --let $restart_parameters= ""
 
+--source include/show_binary_logs.inc
 let $loop_times= 10;
 while ($loop_times) {
---replace_column 2 #
-  show binary logs;
   flush logs;
---replace_column 2 #
-  show master status;
   flush logs;
---replace_column 2 #
-  show master status;
   if ($loop_times < 5)
   {
+    if ($loop_times == 4)
+    {
+      --source include/show_binary_logs.inc
+    }
     reset master;
   }
   if ($loop_times >= 5) 
@@ -106,8 +96,7 @@ while ($loop_times) {
   --echo # left times= $loop_times
 }
 --echo # [engine=$engine] after third loop_times=$loop_times, show master logs results
---replace_column 2 #
-show binary logs;
+--source include/show_binary_logs.inc
 
 ##cleanup
 drop database test_rotate_db;
