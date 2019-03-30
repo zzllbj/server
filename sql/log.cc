@@ -2539,6 +2539,7 @@ static int find_uniq_filename(char *name, ulong min_log_number_to_use,
       }
     }
     my_dirend(dir_info);
+    *last_used_log_number= max_found;
   }
 
   /* check if reached the maximum possible extension number */
@@ -2578,7 +2579,6 @@ index files.", name, ext_buf, (strlen(ext_buf) + (end - name)));
     error= 1;
     goto end;
   }
-  *last_used_log_number= next;
 
   /* print warning if reaching the end of available extensions. */
   if ((next > (MAX_LOG_UNIQUE_FN_EXT - LOG_WARN_UNIQUE_FN_EXT_LEFT)))
@@ -3801,6 +3801,7 @@ bool MYSQL_BIN_LOG::open(const char *log_name,
     }
   }
 
+  ++last_used_log_number;
   if (!is_relay_log)
   {
     /*
@@ -5227,7 +5228,7 @@ int MYSQL_BIN_LOG::new_file_impl()
 #ifdef ENABLE_AND_FIX_HANG
     close_on_error= TRUE;
 #endif
-    goto end2;
+    goto end;
   }
   new_name_ptr=new_name;
 
@@ -5330,11 +5331,7 @@ int MYSQL_BIN_LOG::new_file_impl()
   my_free(old_name);
 
 end:
-  /* In case of errors, reuse the last generated log file name */
-  if (unlikely(error))
-    last_used_log_number--;
 
-end2:
   if (delay_close)
   {
     clear_inuse_flag_when_closing(old_file);

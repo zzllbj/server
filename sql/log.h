@@ -504,7 +504,8 @@ class MYSQL_BIN_LOG: public TC_LOG, private MYSQL_LOG
      GLOBAL MAX_BINLOG_SIZE|MAX_RELAY_LOG_SIZE) from sys_vars.cc
   */
   ulong max_size;
-  ulong last_used_log_number;                   // Cache for find_uniq_filename
+  /* The counter corresponds to the index of the current binlog file. */
+  ulong last_used_log_number;
   // current file sequence number for load data infile binary logging
   uint file_id;
   uint open_count;				// For replication
