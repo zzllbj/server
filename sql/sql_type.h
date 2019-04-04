@@ -6418,6 +6418,10 @@ public:
   Type_aggregator m_type_aggregator_non_commutative_test;
 #endif
   bool init();
+
+  const Type_handler *handler_by_name(const LEX_CSTRING &name) const;
+  const Type_handler *handler_by_name_or_error(const LEX_CSTRING &name) const;
+  bool init2();
 };
 
 

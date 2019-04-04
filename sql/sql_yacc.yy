@@ -6825,6 +6825,14 @@ field_type:
         | field_type_string
         | field_type_lob
         | field_type_misc
+        | IDENT_sys
+          {
+            const Type_handler *h;
+            if (!(h= type_handler_data->handler_by_name_or_error($1)))
+              MYSQL_YYABORT;
+            $$.set(h);
+            Lex->charset= &my_charset_bin;
+          }
         ;
 
 field_type_numeric:
@@ -11724,6 +11732,14 @@ cast_type:
           }
         | cast_type_numeric  { $$= $1; Lex->charset= NULL; }
         | cast_type_temporal { $$= $1; Lex->charset= NULL; }
+        | IDENT_sys
+          {
+            const Type_handler *h;
+            if (!(h= type_handler_data->handler_by_name_or_error($1)))
+              MYSQL_YYABORT;
+            $$.set(h);
+            Lex->charset= &my_charset_bin;
+          }
         ;
 
 cast_type_numeric:

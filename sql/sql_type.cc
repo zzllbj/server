@@ -89,6 +89,9 @@ bool Type_handler_data::init()
     return true;
 #endif
 
+  if (init2())
+    return true;
+
   return
     m_type_aggregator_for_result.add(&type_handler_geometry,
                                      &type_handler_null,
@@ -1862,6 +1865,8 @@ Type_handler::get_handler_by_field_type(enum_field_types type)
 const Type_handler *
 Type_handler::get_handler_by_real_type(enum_field_types type)
 {
+  if (type == 128)
+    return type_handler_data->handler_by_name(Lex_cstring("inet6", 5));
   switch (type) {
   case MYSQL_TYPE_DECIMAL:     return &type_handler_olddecimal;
   case MYSQL_TYPE_NEWDECIMAL:  return &type_handler_newdecimal;
