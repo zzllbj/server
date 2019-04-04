@@ -534,3 +534,18 @@ select next value for s;
 next value for s
 -999
 drop sequence s;
+#
+# MDEV-13010 Next value expressions should increment
+# sequence only once per SQL Statement
+#
+create sequence s;
+select nextval(s);
+nextval(s)
+1
+select nextval(s), nextval(s);
+nextval(s)	nextval(s)
+2	2
+select nextval(s);
+nextval(s)
+3
+drop sequence s;

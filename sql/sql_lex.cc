@@ -778,6 +778,8 @@ void LEX::start(THD *thd_arg)
   wild= 0;
   exchange= 0;
 
+  seq_already_incr= false;
+
   DBUG_VOID_RETURN;
 }
 

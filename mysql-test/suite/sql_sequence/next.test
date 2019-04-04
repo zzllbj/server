@@ -280,3 +280,14 @@ select next value for s;
 flush tables;
 select next value for s;
 drop sequence s;
+
+--echo #
+--echo # MDEV-13010 Next value expressions should increment
+--echo # sequence only once per SQL Statement
+--echo #
+
+create sequence s;
+select nextval(s);
+select nextval(s), nextval(s);
+select nextval(s);
+drop sequence s;

@@ -3134,6 +3134,12 @@ public:
   /* Used in ALTER/CREATE user to store account locking options */
   Account_options account_options;
 
+  /*
+    Used to force multiple NEXTVAL sequence functions, in the same
+    statement, to only increment the sequence once.
+  */
+  bool seq_already_incr;
+
   Table_type table_type;                        /* Used for SHOW CREATE */
   List<Key_part_spec> ref_list;
   List<LEX_USER>      users_list;
