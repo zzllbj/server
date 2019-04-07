@@ -13,9 +13,10 @@ ${Thrift_INCLUDE_DIR}     # this may be set
 SET(Thrift_LIB_PATHS ${Thrift_LIB_PATHS} /usr/local/lib /opt/local/lib /opt/lib)
 FIND_LIBRARY(Thrift_LIBS NAMES thrift PATHS ${Thrift_LIB_PATHS} ${Thrift_LIB})
 
-MARK_AS_ADVANCED(Thrift_LIBS Thrift_INCLUDE_DIRS)
+FIND_FILE(Boost_shared_ptr boost/shared_ptr.hpp PATHS ${Boost_INCLUDE_DIR})
+MARK_AS_ADVANCED(Thrift_LIBS Thrift_INCLUDE_DIRS Boost_shared_ptr)
 
-IF(EXISTS ${Thrift_LIBS})
+IF(EXISTS ${Thrift_LIBS} AND Boost_shared_ptr)
   GET_FILENAME_COMPONENT(LINK_DIR ${Thrift_LIBS} PATH ABSOLUTE)
   INCLUDE_DIRECTORIES(AFTER ${Thrift_INCLUDE_DIRS}/..)
   SET(CMAKE_REQUIRED_INCLUDES ${Thrift_INCLUDE_DIRS})
