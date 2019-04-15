@@ -2277,16 +2277,6 @@ restart:
     else
     {
       /*
-        The block was found in the cache. It's either a already read
-        block or a block waiting to be read by another thread.
-      */
-      if (reg_req)
-	reg_requests(pagecache, block, 1);
-      KEYCACHE_DBUG_PRINT("find_block",
-                          ("block->hash_link: %p  hash_link: %p  "
-                           "block->status: %u", block->hash_link,
-                           hash_link, block->status ));
-      /*
         block->hash_link != hash_link can only happen when
         the block is in PCBLOCK_IN_SWITCH above (is flushed out
         to be replaced by another block). The SWITCH code will change
@@ -2297,6 +2287,16 @@ restart:
       page_status= (((block->hash_link == hash_link) &&
                      (block->status & PCBLOCK_READ)) ?
                     PAGE_READ : PAGE_WAIT_TO_BE_READ);
+      /*
+        The block was found in the cache. It's either a already read
+        block or a block waiting to be read by another thread.
+      */
+      if (reg_req && !(fast && page_status== PAGE_READ))
+	reg_requests(pagecache, block, 1);
+      KEYCACHE_DBUG_PRINT("find_block",
+                          ("block->hash_link: %p  hash_link: %p  "
+                           "block->status: %u", block->hash_link,
+                           hash_link, block->status ));
     }
   }
 
@@ -2877,7 +2877,8 @@ static my_bool read_big_block(PAGECACHE *pagecache,
         bl->status|= PCBLOCK_READ;
       }
       remove_reader(bl);
-      unreg_request(pagecache, bl, 1);
+      if (page_st != PAGE_READ)
+        unreg_request(pagecache, bl, 1);
     }
   }
   if (page < our_page)
