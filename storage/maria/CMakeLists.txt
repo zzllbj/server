@@ -23,6 +23,11 @@ IF(SSL_DEFINES)
 SET_SOURCE_FILES_PROPERTIES(ma_crypt.c PROPERTIES COMPILE_FLAGS ${SSL_DEFINES})
 ENDIF()
 
+SET(S3_SOURCES ha_s3.cc)
+
+SET_SOURCE_FILES_PROPERTIES(${S3_SOURCES} PROPERTIES COMPILE_FLAGS "-I/usr/local/include/libmarias3")
+
+
 SET(ARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c 
             ma_rnext.c ma_rnext_same.c 
             ma_search.c ma_page.c ma_key_recover.c ma_key.c 
@@ -30,14 +35,14 @@ SET(ARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c
             ma_rrnd.c ma_scan.c ma_cache.c 
             ma_statrec.c ma_packrec.c ma_dynrec.c 
             ma_blockrec.c ma_bitmap.c 
-            ma_update.c ma_write.c ma_unique.c 
+            ma_update.c ma_write.c ma_unique.c
             ma_delete.c 
             ma_rprev.c ma_rfirst.c ma_rlast.c ma_rsame.c 
             ma_rsamepos.c ma_panic.c ma_close.c ma_create.c
             ma_range.c ma_dbug.c ma_checksum.c 
             ma_changed.c ma_static.c ma_delete_all.c 
             ma_delete_table.c ma_rename.c  ma_check.c 
-            ma_keycache.c ma_preload.c ma_ft_parser.c 
+            ma_keycache.c ma_preload.c ma_ft_parser.c
             ma_ft_update.c ma_ft_boolean_search.c 
             ma_ft_nlq_search.c ft_maria.c ma_sort.c 
             ha_maria.cc trnman.c lockman.c
@@ -47,8 +52,10 @@ SET(ARIA_SOURCES ma_init.c ma_open.c ma_extra.c ma_info.c ma_rkey.c
             ma_checkpoint.c ma_recovery.c ma_commit.c ma_pagecrc.c
             ha_maria.h maria_def.h ma_recovery_util.c ma_servicethread.c
             ma_norec.c
-            ma_crypt.c ma_backup.c
+            ma_crypt.c ma_backup.c s3_func.c
 )
+
+SET_SOURCE_FILES_PROPERTIES(${ARIA_SOURCES} PROPERTIES COMPILE_FLAGS "-I/usr/local/include/libmarias3")
 
 IF(APPLE)
   # Workaround linker bug on OSX 10.7
@@ -60,12 +67,14 @@ MYSQL_ADD_PLUGIN(aria ${ARIA_SOURCES}
   MANDATORY
   RECOMPILE_FOR_EMBEDDED)
 
+MYSQL_ADD_PLUGIN(s3 ${S3_SOURCES} STORAGE_ENGINE DEFAULT)
+
 IF(NOT WITH_ARIA_STORAGE_ENGINE)
   RETURN()
 ENDIF()
 
-TARGET_LINK_LIBRARIES(aria myisam
-  mysys mysys_ssl)
+TARGET_LINK_LIBRARIES(aria myisam mysys mysys_ssl -L/usr/local/lib64 marias3 curl)
+TARGET_LINK_LIBRARIES(s3 aria myisam mysys mysys_ssl)
 
 MYSQL_ADD_EXECUTABLE(aria_ftdump maria_ftdump.c COMPONENT Server)
 TARGET_LINK_LIBRARIES(aria_ftdump aria)
@@ -82,6 +91,12 @@ SET_TARGET_PROPERTIES(aria_dump_log PROPERTIES COMPILE_FLAGS "-DMARIA_DUMP_LOG")
 
 MYSQL_ADD_EXECUTABLE(aria_pack maria_pack.c COMPONENT Server)
 TARGET_LINK_LIBRARIES(aria_pack aria)
+
+IF(WITH_S3_STORAGE_ENGINE)
+  MYSQL_ADD_EXECUTABLE(aria_s3_copy aria_s3_copy.cc COMPONENT Server)
+  TARGET_LINK_LIBRARIES(aria_s3_copy s3 -L/usr/local/lib64 marias3 curl)
+  SET_TARGET_PROPERTIES(aria_s3_copy PROPERTIES COMPILE_FLAGS "-I/usr/local/include/libmarias3")
+ENDIF()
 
 IF(WITH_UNIT_TESTS)
   ADD_EXECUTABLE(ma_test1 ma_test1.c)

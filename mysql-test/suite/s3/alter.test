@@ -1,0 +1,31 @@
+--source include/have_s3.inc
+--source include/have_sequence.inc
+
+--echo #
+--echo # Test alter table to and from s3
+--echo #
+
+create table t1 (a int, b int) engine=aria;
+insert into t1 select seq,seq+10 from seq_1_to_1000;
+alter table t1 engine=s3;
+show create table t1;
+alter table t1 comment="hello";
+show create table t1;
+alter table t1 engine=aria;
+show create table t1;
+drop table t1;
+
+
+--echo #
+--echo # Test changing s3 table
+--echo #
+
+create table t1 (a int, b int) engine=aria;
+insert into t1 select seq,seq+10 from seq_1_to_1000;
+alter table t1 engine=s3;
+# this will be fixed when rename is implemented.
+--error 1235
+alter table t1 engine=s3, compression_algorithm="zlib";
+show create table t1;
+select * from t1 limit 5;
+drop table t1;
