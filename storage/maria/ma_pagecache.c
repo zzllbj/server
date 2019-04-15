@@ -2880,6 +2880,15 @@ static my_bool read_big_block(PAGECACHE *pagecache,
       unreg_request(pagecache, bl, 1);
     }
   }
+  if (page < our_page)
+  {
+    /* we break earlier, but still have to fill page what was requested */
+    DBUG_ASSERT(!(block->status & PCBLOCK_READ));
+    memcpy(block->buffer,
+           data.str + ((our_page - page_to_read) * pagecache->block_size),
+           pagecache->block_size);
+    block->status|= PCBLOCK_READ;
+  }
   /* TODO: is it correct? */
   my_free(data.str);
 
