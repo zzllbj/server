@@ -796,6 +796,8 @@ static bool create_key_infos(const uchar *strpos, const uchar *frm_image_end,
 
     keyinfo->key_part=	 key_part;
     keyinfo->rec_per_key= rec_per_key;
+    keyinfo->overlapped.init();
+    keyinfo->constraint_correlated.init();
     for (j=keyinfo->user_defined_key_parts ; j-- ; key_part++)
     {
       if (strpos + (new_frm_ver >= 1 ? 9 : 7) >= frm_image_end)
@@ -3588,7 +3590,9 @@ enum open_frm_error open_table_from_share(THD *thd, TABLE_SHARE *share,
   outparam->covering_keys.init();
   outparam->intersect_keys.init();
   outparam->keys_in_use_for_query.init();
-
+  outparam->constraint_dependent_keys.init();
+  outparam->keys_usable_for_splitting.init();
+  outparam->with_impossible_ranges.init();
   /* Allocate handler */
   outparam->file= 0;
   if (!(prgflag & OPEN_FRM_FILE_ONLY))
@@ -3683,7 +3687,7 @@ enum open_frm_error open_table_from_share(THD *thd, TABLE_SHARE *share,
   /* Fix key->name and key_part->field */
   if (share->key_parts)
   {
-    KEY	*key_info, *key_info_end;
+    KEY	*key_info;
     KEY_PART_INFO *key_part;
     uint n_length;
     n_length= share->keys*sizeof(KEY) + share->ext_key_parts*sizeof(KEY_PART_INFO);
@@ -3692,16 +3696,14 @@ enum open_frm_error open_table_from_share(THD *thd, TABLE_SHARE *share,
     outparam->key_info= key_info;
     key_part= (reinterpret_cast<KEY_PART_INFO*>(key_info+share->keys));
 
-    memcpy(key_info, share->key_info, sizeof(*key_info)*share->keys);
     memcpy(key_part, share->key_info[0].key_part, (sizeof(*key_part) *
                                                    share->ext_key_parts));
 
-    for (key_info_end= key_info + share->keys ;
-         key_info < key_info_end ;
-         key_info++)
+    for (uint i=0; i < share->keys ; i++, key_info++)
     {
       KEY_PART_INFO *key_part_end;
 
+      *key_info= share->key_info[i];
       key_info->table= outparam;
       key_info->key_part= key_part;
 
@@ -7428,8 +7430,8 @@ void TABLE::restore_blob_values(String *blob_storage)
 bool TABLE::alloc_keys(uint key_count)
 {
   key_info= (KEY*) alloc_root(&mem_root, sizeof(KEY)*(s->keys+key_count));
-  if (s->keys)
-    memmove(key_info, s->key_info, sizeof(KEY)*s->keys);
+  for (uint i=0; i < s->keys; i++)
+    key_info[i]= s->key_info[i];
   s->key_info= key_info;
   max_keys= s->keys+key_count;
   return !(key_info);
@@ -7661,7 +7663,7 @@ void TABLE::use_index(int key_to_save)
   DBUG_ASSERT(!created && key_to_save < (int)s->keys);
   if (key_to_save >= 0)
     /* Save the given key. */
-    memmove(key_info, key_info + key_to_save, sizeof(KEY));
+    key_info[0] = key_info[key_to_save];
   else
     /* Drop all keys; */
     i= 0;

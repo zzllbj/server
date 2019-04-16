@@ -40,7 +40,7 @@ SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
 
 # MAX_INDEXES - Set the maximum number of indexes per table, default 64
 IF (NOT MAX_INDEXES)
-  SET(MAX_INDEXES 64)
+  SET(MAX_INDEXES 64 CACHE STRING "Max number of indexes")
 ENDIF(NOT MAX_INDEXES)
 
 IF (${MAX_INDEXES} GREATER 128)

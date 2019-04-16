@@ -14578,8 +14578,8 @@ enum_alter_inplace_result ha_mroonga::wrapper_check_if_supported_inplace_alter(
     if (key->flags & HA_FULLTEXT || mrn_is_geo_key(key)) {
       result_mroonga = HA_ALTER_INPLACE_EXCLUSIVE_LOCK;
     } else {
-      memcpy(&alter_index_drop_buffer[alter_index_drop_count],
-        ha_alter_info->index_drop_buffer[i], sizeof(KEY));
+      alter_index_drop_buffer[alter_index_drop_count] =
+        *ha_alter_info->index_drop_buffer[i];
       ++alter_index_drop_count;
     }
   }
@@ -14606,12 +14606,12 @@ enum_alter_inplace_result ha_mroonga::wrapper_check_if_supported_inplace_alter(
   for (i = 0; i < n_keys; ++i) {
     const KEY *key = &altered_table->key_info[i];
     if (!(key->flags & HA_FULLTEXT || mrn_is_geo_key(key))) {
-      memcpy(&alter_key_info_buffer[alter_key_count],
-             &ha_alter_info->key_info_buffer[i], sizeof(KEY));
-      memcpy(&wrap_altered_table_key_info[alter_key_count],
-             &altered_table->key_info[i], sizeof(KEY));
-      memcpy(&wrap_altered_table_share_key_info[alter_key_count],
-             &altered_table->s->key_info[i], sizeof(KEY));
+      alter_key_info_buffer[alter_key_count] =
+             ha_alter_info->key_info_buffer[i];
+      wrap_altered_table_key_info[alter_key_count] =
+             altered_table->key_info[i];
+      wrap_altered_table_share_key_info[alter_key_count] =
+             altered_table->s->key_info[i];
       if (add_index_pos < alter_index_add_count &&
              alter_index_add_buffer[add_index_pos] == i) {
         alter_index_add_buffer[add_index_pos] = alter_key_count;

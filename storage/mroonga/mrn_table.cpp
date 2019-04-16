@@ -908,8 +908,7 @@ MRN_SHARE *mrn_get_share(const char *table_name, TABLE *table, int *error)
           !mrn_is_geo_key(&table->s->key_info[i]))
         {
           wrap_key_nr[i] = j;
-          memcpy(&wrap_key_info[j], &table->s->key_info[i],
-                 sizeof(*wrap_key_info));
+          wrap_key_info[j]= table->s->key_info[i];
           j++;
         } else {
           wrap_key_nr[i] = MAX_KEY;
@@ -932,7 +931,7 @@ MRN_SHARE *mrn_get_share(const char *table_name, TABLE *table, int *error)
         share->wrap_key_info = NULL;
         share->wrap_primary_key = MAX_KEY;
       }
-      memcpy(wrap_table_share, table->s, sizeof(*wrap_table_share));
+      *wrap_table_share= *table->s;
       mrn_init_sql_alloc(current_thd, &(wrap_table_share->mem_root));
       wrap_table_share->keys = share->wrap_keys;
       wrap_table_share->key_info = share->wrap_key_info;
@@ -1114,8 +1113,7 @@ KEY *mrn_create_key_info_for_table(MRN_SHARE *share, TABLE *table, int *error)
       j = wrap_key_nr[i];
       if (j < MAX_KEY)
       {
-        memcpy(&wrap_key_info[j], &table->key_info[i],
-               sizeof(*wrap_key_info));
+        wrap_key_info[j] = table->key_info[i];
       }
     }
   } else
