@@ -3404,7 +3404,10 @@ bool calculate_cond_selectivity_for_table(THD *thd, TABLE *table, Item **cond)
     param.prev_tables= param.read_tables= 0;
     param.current_table= table->map;
     param.using_real_indexes= FALSE;
-    param.real_keynr[0]= 0;
+
+    for (uint keyno=0; keyno < param.keys; keyno++)
+      param.real_keynr[keyno]= keyno;
+
     param.alloced_sel_args= 0;
 
     thd->no_errors=1;		    
