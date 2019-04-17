@@ -39,7 +39,7 @@ SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING
    "Choose the type of build, options are: None(CMAKE_CXX_FLAGS or CMAKE_C_FLAGS used) Debug Release RelWithDebInfo MinSizeRel")
 
 # MAX_INDEXES - Set the maximum number of indexes per table, default 64
-SET(MAX_INDEXES 64 CACHE STRING "Max number of indexes")
+SET(MAX_INDEXES 128 CACHE STRING "Max number of indexes")
 IF (${MAX_INDEXES} GREATER 128)
   MESSAGE(FATAL_ERROR "MAX_INDEXES values greater than 128 is not supported!")
 ENDIF()
