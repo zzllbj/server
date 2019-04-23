@@ -1864,11 +1864,14 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           share->mysql_version < 100000 &&
           strpos[13] == (uchar) MYSQL_TYPE_VIRTUAL)
       {
-        // Raise an error
-        mysql_table_to_upgrade=1;
-        goto err;
-        //field_type= (enum_field_types) MYSQL_TYPE_MYSQL_JSON;
-        // strpos[13]= (uchar) MYSQL_TYPE_MYSQL_JSON; // read only 
+        if(!(thd->open_options & HA_OPEN_FOR_ALTER))
+        {
+          // Raise an error
+          mysql_table_to_upgrade=1;
+          goto err;
+        }
+        field_type= (enum_field_types) MYSQL_TYPE_MYSQL_JSON;
+        //strpos[13]= (uchar) MYSQL_TYPE_MYSQL_JSON; // read only 
       }
       else if ((uchar)field_type == (uchar)MYSQL_TYPE_VIRTUAL)
       {
