@@ -333,7 +333,7 @@ ELSE()
      )
   ENDFOREACH()
 
-  # MariaDB symlinks
+  # Create MariaDB named symlinks
   CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_config ${CMAKE_BINARY_DIR}/client/mariadb-config)
   CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_setpermission ${CMAKE_BINARY_DIR}/client/mariadb-setpermission)
   CREATE_MARIADB_SYMLINK(${prefix}/${INSTALL_BINDIR}/mysql_secure_installation ${CMAKE_BINARY_DIR}/client/mariadb-secure-installation)
