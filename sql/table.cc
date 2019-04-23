@@ -1208,6 +1208,7 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
   bool vers_can_native= false;
   const uchar *extra2_field_flags= 0;
   size_t extra2_field_flags_length= 0;
+  bool mysql_table_to_upgrade= 0;
 
   MEM_ROOT *old_root= thd->mem_root;
   Virtual_column_info **table_check_constraints;
@@ -1863,7 +1864,10 @@ int TABLE_SHARE::init_from_binary_frm_image(THD *thd, bool write,
           share->mysql_version < 100000 &&
           strpos[13] == (uchar) MYSQL_TYPE_VIRTUAL)
       {
-        field_type= (enum_field_types) MYSQL_TYPE_MYSQL_JSON;
+        // Raise an error
+        mysql_table_to_upgrade=1;
+        goto err;
+        //field_type= (enum_field_types) MYSQL_TYPE_MYSQL_JSON;
         // strpos[13]= (uchar) MYSQL_TYPE_MYSQL_JSON; // read only 
       }
       else if ((uchar)field_type == (uchar)MYSQL_TYPE_VIRTUAL)
@@ -2690,8 +2694,11 @@ err:
   plugin_unlock(0, se_plugin);
   my_hash_free(&share->name_hash);
 
-  if (!thd->is_error())
+  if (!thd->is_error() && !mysql_table_to_upgrade)
     open_table_error(share, OPEN_FRM_CORRUPTED, share->open_errno);
+  else
+    // Case where mysql_table_with_json is used.
+    open_table_error(share, OPEN_FRM_NEEDS_REBUILD, share->open_errno);
 
   thd->mem_root= old_root;
   DBUG_RETURN(HA_ERR_NOT_A_TABLE);
