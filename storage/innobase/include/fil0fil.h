@@ -644,12 +644,13 @@ struct fil_system_t {
   void close();
 
   /**
-    Set the encryption status of all tablespaces after a tablespace
-    has been added to unencrypted_spaces or encrypted_spaces.
+    Set the encryption status of all tablespaces after
+    unencrypted_spaces or encrypted_spaces has been changed.
 
     @param[in] encrypted	whether the tablespace is encrypted
+    @param[in] remove		whether the tablespace is being removed
     @return whether dict_hdr_crypt_status_update() must be called */
-  inline bool crypt_enlist(bool encrypted);
+  inline bool crypt_update(bool encrypted, bool remove);
 
 private:
   bool m_initialised;

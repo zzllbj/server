@@ -51,6 +51,7 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 --let $restart_parameters=--skip-file-key-management --innodb-encrypt-tables=OFF --innodb-encryption-threads=0 --innodb-tablespaces-encryption
 -- source include/restart_mysqld.inc
 
+select count(*) from mysql.transaction_registry;
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
 

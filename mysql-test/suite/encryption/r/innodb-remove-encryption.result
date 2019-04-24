@@ -31,6 +31,9 @@ NAME
 # Success!
 
 # Restart server with no encryption setup, there should be no crashes
+select count(*) from mysql.transaction_registry;
+count(*)
+0
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME
 innodb_system

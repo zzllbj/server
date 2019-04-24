@@ -5098,7 +5098,7 @@ fil_space_set_punch_hole(
 	node->space->punch_hole = val;
 }
 
-inline bool fil_system_t::crypt_enlist(bool encrypted)
+inline bool fil_system_t::crypt_update(bool encrypted, bool remove)
 {
 	ut_ad(is_initialised());
 	ut_ad(this == &fil_system);
@@ -5114,12 +5114,12 @@ inline bool fil_system_t::crypt_enlist(bool encrypted)
 
 	switch (status) {
 	case CRYPT_ENCRYPTED:
-		if (!encrypted) {
+		if (!remove && !encrypted) {
 			status = CRYPT_MIXED;
 		}
 		break;
 	case CRYPT_DECRYPTED:
-		if (encrypted) {
+		if (!remove && encrypted) {
 			status = CRYPT_MIXED;
 		}
 		break;
@@ -5129,7 +5129,7 @@ inline bool fil_system_t::crypt_enlist(bool encrypted)
 		/* space_list includes redo log and temp_space,
 		which are not part of the key rotation. */
 		DBUG_ASSERT(UT_LIST_GET_LEN(space_list) >= 2);
-		ulint n_total = UT_LIST_GET_LEN(space_list) - 2;
+		ulint n_total = UT_LIST_GET_LEN(space_list) - (1 + !!(temp_space));
 		DBUG_ASSERT(n_total + !temp_space
 			    >= n_encrypted + n_unencrypted);
 
@@ -5158,12 +5158,12 @@ bool fil_space_t::crypt_enlist()
 	if (!crypt_data || !crypt_data->min_key_version) {
 		if (add_if_not_in_unencrypted_spaces()) {
 			remove_if_in_encrypted_spaces();
-			return fil_system.crypt_enlist(false);
+			return fil_system.crypt_update(false, false);
 		}
 	} else {
 		if (add_if_not_in_encrypted_spaces()) {
 			remove_if_in_unencrypted_spaces();
-			return fil_system.crypt_enlist(true);
+			return fil_system.crypt_update(true, false);
 		}
 	}
 
@@ -5178,9 +5178,28 @@ inline bool fil_space_t::crypt_delist()
 		return false;
 	}
 
-	if (remove_if_in_encrypted_spaces()
-	    || remove_if_in_unencrypted_spaces()) {
-		return true;
+	if (remove_if_in_encrypted_spaces()) {
+		ut_ad(!is_in_unencrypted_spaces());
+
+		if (srv_shutdown_state == SRV_SHUTDOWN_LAST_PHASE) {
+			return false;
+		}
+
+		ut_ad(fil_system.crypt_status
+		      != fil_system_t::CRYPT_DECRYPTED);
+		return fil_system.crypt_update(true, true);
+	}
+
+	if (remove_if_in_unencrypted_spaces()) {
+		ut_ad(!is_in_unencrypted_spaces());
+
+		if (srv_shutdown_state == SRV_SHUTDOWN_LAST_PHASE) {
+			return false;
+		}
+
+		ut_ad(fil_system.crypt_status
+		      != fil_system_t::CRYPT_ENCRYPTED);
+		return fil_system.crypt_update(false, true);
 	}
 
 	ut_ad(size == 0);

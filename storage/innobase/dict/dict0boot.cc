@@ -538,10 +538,10 @@ dict_create(void)
 /** Update DICT_HDR_CRYPT_STATUS. */
 ATTRIBUTE_COLD void dict_hdr_crypt_status_update(mtr_t* mtr, uint32_t status)
 {
+	if (recv_recovery_is_on()) return;
 	ut_ad(status == fil_system_t::CRYPT_ENCRYPTED
 	      || status == fil_system_t::CRYPT_DECRYPTED
 	      || status == fil_system_t::CRYPT_MIXED);
-	if (recv_recovery_is_on()) return;
 	byte* s = dict_hdr_get(mtr) + DICT_HDR_CRYPT_STATUS;
 	if (mach_read_from_4(s) != status) {
 		mlog_write_ulint(s, status, MLOG_4BYTES, mtr);
@@ -551,6 +551,7 @@ ATTRIBUTE_COLD void dict_hdr_crypt_status_update(mtr_t* mtr, uint32_t status)
 /** Update DICT_HDR_CRYPT_STATUS. */
 ATTRIBUTE_COLD void dict_hdr_crypt_status_update(uint32_t status)
 {
+	if (recv_recovery_is_on()) return;
 	mtr_t mtr;
 	mtr.start();
 	dict_hdr_crypt_status_update(&mtr, status);
