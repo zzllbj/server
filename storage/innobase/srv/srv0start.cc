@@ -769,6 +769,157 @@ srv_check_undo_redo_logs_exists()
 	return(DB_SUCCESS);
 }
 
+/** Validate the number of undo tables given with the number of
+opened undo tablespaces.
+@return DB_SUCCESS if it is valid. */
+static dberr_t srv_validate_undo_tablespaces(dberr_t& err)
+{
+	/* If the user says that there are fewer than what we find we
+	tolerate that discrepancy but not the inverse. Because there could
+	be unused undo tablespaces for future use. */
+
+	if (srv_undo_tablespaces > srv_undo_tablespaces_open) {
+		ib::error() << "Expected to open innodb_undo_tablespaces="
+			<< srv_undo_tablespaces
+			<< " but was able to find only "
+			<< srv_undo_tablespaces_open;
+
+		return (err != DB_SUCCESS ? err : DB_ERROR);
+
+	} else if (srv_undo_tablespaces_open > 0) {
+
+		ib::info() << "Opened " << srv_undo_tablespaces_open
+			<< " undo tablespaces";
+
+		if (srv_undo_tablespaces == 0) {
+			ib::warn() << "innodb_undo_tablespaces=0 disables"
+				" dedicated undo log tablespaces";
+		}
+	}
+
+	return DB_SUCCESS;
+}
+
+/** Get the number of undo tablespaces from TRX_SYS page.
+@return error code. */
+static dberr_t srv_check_undo_tablespaces()
+{
+	ulint	undo_tablespace_ids[TRX_SYS_N_RSEGS + 1];
+	dberr_t	err = DB_SUCCESS;
+	memset(undo_tablespace_ids, 0x0, sizeof(undo_tablespace_ids));
+	srv_undo_tablespaces_active = trx_rseg_get_n_undo_tablespaces(
+						undo_tablespace_ids);
+	return srv_validate_undo_tablespaces(err);
+}
+
+/** Open all undo tablespaces for normal shutdown/crash recovery. It should
+avoid the fetching of TRX_SYS page.
+@return error code. */
+static dberr_t srv_undo_tablespaces_open_all()
+{
+	char	undo_name[sizeof "innodb_undo000"];
+
+	for (ulint i = 0; i < TRX_SYS_N_RSEGS; ++i) {
+
+		char		name[OS_FILE_MAX_PATH];
+		pfs_os_file_t	fh;
+		bool		success;
+
+		snprintf(name, sizeof(name),
+			 "%s%cundo%03zu",
+			 srv_undo_dir, OS_PATH_SEPARATOR, i + 1);
+
+		fh = os_file_create(
+			innodb_data_file_key, name, OS_FILE_OPEN
+			| OS_FILE_ON_ERROR_NO_EXIT | OS_FILE_ON_ERROR_SILENT,
+			OS_FILE_AIO, OS_DATA_FILE, srv_read_only_mode, &success);
+
+		if (!success) {
+			break;
+		}
+
+		os_offset_t size = os_file_get_size(fh);
+		ut_a(size != os_offset_t(-1));
+
+		byte* buf2 = static_cast<byte*>(
+			ut_malloc_nokey(2 * UNIV_PAGE_SIZE_MAX));
+
+		/* Align the memory for file i/o if we might have O_DIRECT set */
+		byte* page = static_cast<byte*>(ut_align(buf2, srv_page_size));
+
+		IORequest request(IORequest::READ);
+
+		if (os_file_read(request, fh, page, 0, srv_page_size)
+		    != DB_SUCCESS) {
+			ib::error() << "Unable to read first page of file " << name;
+			ut_free(buf2);
+			return DB_ERROR;
+		}
+
+		ulint space_id = fsp_header_get_space_id(page);
+
+		ut_ad(space_id != 0);
+
+		/* Load the tablespace into InnoDB's internal data structures. */
+
+		/* We set the biggest space id to the undo tablespace
+		   because InnoDB hasn't opened any other tablespace apart
+		   from the system tablespace. */
+
+		fil_set_max_space_id_if_bigger(space_id);
+
+		ulint fsp_flags;
+		switch (srv_checksum_algorithm) {
+			case SRV_CHECKSUM_ALGORITHM_FULL_CRC32:
+			case SRV_CHECKSUM_ALGORITHM_STRICT_FULL_CRC32:
+				fsp_flags = (FSP_FLAGS_FCRC32_MASK_MARKER
+						| FSP_FLAGS_FCRC32_PAGE_SSIZE());
+				break;
+			default:
+				fsp_flags = FSP_FLAGS_PAGE_SSIZE();
+		}
+
+		snprintf(undo_name, sizeof(undo_name),
+			 "innodb_undo%03u", static_cast<unsigned>(space_id));
+
+		fil_space_t* space = fil_space_create(
+				undo_name, space_id, fsp_flags,
+				FIL_TYPE_TABLESPACE, NULL);
+
+		ut_a(fil_validate());
+		ut_a(space);
+
+		fil_node_t* file = space->add(name, fh, 0, false, true);
+
+		mutex_enter(&fil_system.mutex);
+
+		success = file->fill_metadata(page, true);
+
+		if (!success) {
+			os_file_close(file->handle);
+			file->handle = OS_FILE_CLOSED;
+			ut_a(fil_system.n_open > 0);
+			fil_system.n_open--;
+		}
+
+		mutex_exit(&fil_system.mutex);
+
+		/* Note the first undo tablespace id in case of
+		no active undo tablespace. */
+		if (0 == srv_undo_tablespaces_open++) {
+			srv_undo_space_id_start = space_id;
+		}
+
+		ut_free(buf2);
+	}
+
+	if (srv_undo_tablespaces_open == 0) {
+		srv_undo_space_id_start = 0;
+	}
+
+	return DB_SUCCESS;
+}
+
 /** Open the configured number of dedicated undo tablespaces.
 @param[in]	create_new_db	whether the database is being initialized
 @return DB_SUCCESS or error code */
@@ -810,7 +961,7 @@ srv_undo_tablespaces_init(bool create_new_db)
 		snprintf(
 			name, sizeof(name),
 			"%s%cundo%03zu",
-			srv_undo_dir, OS_PATH_SEPARATOR, space_id);
+			srv_undo_dir, OS_PATH_SEPARATOR, i + 1);
 
 		if (i == 0) {
 			srv_undo_space_id_start = space_id;
@@ -833,11 +984,15 @@ srv_undo_tablespaces_init(bool create_new_db)
 	the system tablespace (0). If we are creating a new instance then
 	we build the undo_tablespace_ids ourselves since they don't
 	already exist. */
-	n_undo_tablespaces = create_new_db
-		|| srv_operation == SRV_OPERATION_BACKUP
-		|| srv_operation == SRV_OPERATION_RESTORE_DELTA
-		? srv_undo_tablespaces
-		: trx_rseg_get_n_undo_tablespaces(undo_tablespace_ids);
+
+	if (create_new_db
+	    || srv_operation == SRV_OPERATION_BACKUP
+	    || srv_operation == SRV_OPERATION_RESTORE_DELTA) {
+		n_undo_tablespaces = srv_undo_tablespaces;
+	} else {
+		ut_ad(0);
+	}
+
 	srv_undo_tablespaces_active = srv_undo_tablespaces;
 
 	switch (srv_operation) {
@@ -867,7 +1022,7 @@ srv_undo_tablespaces_init(bool create_new_db)
 			name, sizeof(name),
 			"%s%cundo%03zu",
 			srv_undo_dir, OS_PATH_SEPARATOR,
-			undo_tablespace_ids[i]);
+			i + 1);
 
 		/* Should be no gaps in undo tablespace ids. */
 		ut_a(!i || prev_space_id + 1 == undo_tablespace_ids[i]);
@@ -921,27 +1076,10 @@ srv_undo_tablespaces_init(bool create_new_db)
 		srv_undo_space_id_start = 0;
 	}
 
-	/* If the user says that there are fewer than what we find we
-	tolerate that discrepancy but not the inverse. Because there could
-	be unused undo tablespaces for future use. */
+	err = srv_validate_undo_tablespaces(err);
 
-	if (srv_undo_tablespaces > n_undo_tablespaces) {
-		ib::error() << "Expected to open innodb_undo_tablespaces="
-			<< srv_undo_tablespaces
-			<< " but was able to find only "
-			<< n_undo_tablespaces;
-
-		return(err != DB_SUCCESS ? err : DB_ERROR);
-
-	} else if (n_undo_tablespaces > 0) {
-
-		ib::info() << "Opened " << n_undo_tablespaces
-			<< " undo tablespaces";
-
-		if (srv_undo_tablespaces == 0) {
-			ib::warn() << "innodb_undo_tablespaces=0 disables"
-				" dedicated undo log tablespaces";
-		}
+	if (err != DB_SUCCESS) {
+		goto func_exit;
 	}
 
 	if (create_new_db) {
@@ -956,7 +1094,8 @@ srv_undo_tablespaces_init(bool create_new_db)
 		}
 	}
 
-	return(DB_SUCCESS);
+func_exit:
+	return (err != DB_SUCCESS ? err : DB_SUCCESS);
 }
 
 /** Create the temporary file tablespace.
@@ -1768,7 +1907,13 @@ files_checked:
 	fil_open_log_and_system_tablespace_files();
 	ut_d(fil_system.sys_space->recv_size = srv_sys_space_size_debug);
 
-	err = srv_undo_tablespaces_init(create_new_db);
+	if (create_new_db
+	    || srv_operation == SRV_OPERATION_BACKUP
+	    || srv_operation == SRV_OPERATION_RESTORE_DELTA) {
+		err = srv_undo_tablespaces_init(create_new_db);
+	} else {
+		err = srv_undo_tablespaces_open_all();
+	}
 
 	/* If the force recovery is set very high then we carry on regardless
 	of all errors. Basically this is fingers crossed mode. */
@@ -1837,14 +1982,6 @@ files_checked:
 			return(srv_init_abort(err));
 		}
 	} else {
-		/* Work around the bug that we were performing a dirty read of
-		at least the TRX_SYS page into the buffer pool above, without
-		reading or applying any redo logs.
-
-		MDEV-19229 FIXME: Remove the dirty reads and this call.
-		Add an assertion that the buffer pool is empty. */
-		buf_pool_invalidate();
-
 		/* We always try to do a recovery, even if the database had
 		been shut down normally: this is the normal startup path */
 
@@ -1868,6 +2005,11 @@ files_checked:
 		case SRV_OPERATION_RESTORE:
 			/* This must precede
 			recv_apply_hashed_log_recs(true). */
+			err = srv_check_undo_tablespaces();
+			if (err != DB_SUCCESS) {
+				return srv_init_abort(err);
+			}
+
 			trx_lists_init_at_db_start();
 			break;
 		case SRV_OPERATION_RESTORE_DELTA:

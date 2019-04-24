@@ -7645,14 +7645,20 @@ end:
 	}
 }
 
-/** Read the first page of a data file.
-@param[in]	first	whether this is the very first read
+/** Fill the metadata from first page.
+@param[in]	first_page	first page of the file
+@param[in]	first		whether this is the very first read
 @return	whether the page was found valid */
-bool fil_node_t::read_page0(bool first)
+bool fil_node_t::fill_metadata(byte* first_page, bool first)
 {
-	ut_ad(mutex_own(&fil_system.mutex));
-	ut_a(space->purpose != FIL_TYPE_LOG);
+	const ulint space_id = fsp_header_get_space_id(first_page);
+	ulint flags = fsp_header_get_flags(first_page);
+	const ulint size = fsp_header_get_field(first_page, FSP_SIZE);
+	const ulint free_limit = fsp_header_get_field(first_page, FSP_FREE_LIMIT);
+	const ulint free_len = flst_get_len(FSP_HEADER_OFFSET + FSP_FREE
+					    + first_page);
 	const ulint psize = space->physical_size();
+
 #ifndef _WIN32
 	struct stat statbuf;
 	if (fstat(handle, &statbuf)) {
@@ -7673,22 +7679,6 @@ bool fil_node_t::read_page0(bool first)
 		return false;
 	}
 
-	byte* buf2 = static_cast<byte*>(ut_malloc_nokey(2 * psize));
-
-	/* Align the memory for file i/o if we might have O_DIRECT set */
-	byte* page = static_cast<byte*>(ut_align(buf2, psize));
-	IORequest request(IORequest::READ);
-	if (!os_file_read(request, handle, page, 0, psize)) {
-		ib::error() << "Unable to read first page of file " << name;
-		ut_free(buf2);
-		return false;
-	}
-	const ulint space_id = fsp_header_get_space_id(page);
-	ulint flags = fsp_header_get_flags(page);
-	const ulint size = fsp_header_get_field(page, FSP_SIZE);
-	const ulint free_limit = fsp_header_get_field(page, FSP_FREE_LIMIT);
-	const ulint free_len = flst_get_len(FSP_HEADER_OFFSET + FSP_FREE
-					    + page);
 	if (!fil_space_t::is_valid_flags(flags, space->id)) {
 		ulint cflags = fsp_flags_convert_from_101(flags);
 		if (cflags == ULINT_UNDEFINED) {
@@ -7698,7 +7688,6 @@ invalid:
 				<< ib::hex(space->flags)
 				<< " but found " << ib::hex(flags)
 				<< " in the file " << name;
-			ut_free(buf2);
 			return false;
 		}
 
@@ -7718,9 +7707,8 @@ invalid:
 	/* Try to read crypt_data from page 0 if it is not yet read. */
 	if (!space->crypt_data) {
 		space->crypt_data = fil_space_read_crypt_data(
-			fil_space_t::zip_size(flags), page);
+			fil_space_t::zip_size(flags), first_page);
 	}
-	ut_free(buf2);
 
 	if (UNIV_UNLIKELY(space_id != space->id)) {
 		ib::error() << "Expected tablespace id " << space->id
@@ -7759,6 +7747,52 @@ invalid:
 	}
 
 	return true;
+}
+
+/** Read the first page of a data file.
+@param[in]	first	whether this is the very first read
+@return	whether the page was found valid */
+bool fil_node_t::read_page0(bool first)
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	ut_a(space->purpose != FIL_TYPE_LOG);
+	const ulint psize = space->physical_size();
+
+#ifndef _WIN32
+	struct stat statbuf;
+	if (fstat(handle, &statbuf)) {
+		return false;
+	}
+	block_size = statbuf.st_blksize;
+	os_offset_t size_bytes = statbuf.st_size;
+#else
+	os_offset_t size_bytes = os_file_get_size(handle);
+	ut_a(size_bytes != (os_offset_t) -1);
+#endif
+	const ulint min_size = FIL_IBD_FILE_INITIAL_SIZE * psize;
+
+	if (size_bytes < min_size) {
+		ib::error() << "The size of the file " << name
+			    << " is only " << size_bytes
+			    << " bytes, should be at least " << min_size;
+		return false;
+	}
+
+	byte* buf2 = static_cast<byte*>(ut_malloc_nokey(2 * psize));
+	/* Align the memory for file i/o if we might have O_DIRECT set */
+	byte* page = static_cast<byte*>(ut_align(buf2, psize));
+	IORequest request(IORequest::READ);
+	if (!os_file_read(request, handle, page, 0, psize)) {
+		ib::error() << "Unable to read first page of file " << name;
+		ut_free(buf2);
+		return false;
+	}
+
+	bool is_filled = fill_metadata(page, first);
+
+	ut_free(buf2);
+
+	return is_filled;
 }
 
 #else

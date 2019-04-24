@@ -591,6 +591,12 @@ struct fil_node_t {
 		return(handle != OS_FILE_CLOSED);
 	}
 
+	/** Fill the metadata from page0.
+	@param[in]	first_page	page0 from the tablespace
+	@param[in]	first		whether this is the first read
+	@return whether the page was found valid */
+	bool fill_metadata(byte* first_page, bool first);
+
 	/** Read the first page of a data file.
 	@param[in]	first	whether this is the very first read
 	@return	whether the page was found valid */
