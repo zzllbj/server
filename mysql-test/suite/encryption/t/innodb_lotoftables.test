@@ -46,8 +46,8 @@ commit work;
 #
 # Verify
 #
---echo # should be empty
-SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE NAME LIKE 'innodb_encrypted%';
+--echo # All 100 tables are not encrypted
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE NAME LIKE 'innodb_encrypted%' and MIN_KEY_VERSION = 0;
 
 #
 # This will create 100 tables that are encrypted always
@@ -81,7 +81,7 @@ set autocommit=1;
 #
 --echo # should contain 100 tables
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0 AND NAME LIKE 'innodb_encrypted%' ORDER BY NAME;
---echo # should contain 0 tables
+--echo # should contain 100 tables
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0 AND NAME LIKE 'innodb_encrypted%' ORDER BY NAME;
 
 #

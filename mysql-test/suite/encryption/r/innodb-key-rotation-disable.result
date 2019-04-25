@@ -2,6 +2,10 @@ SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_
 NAME
 SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
 NAME
+innodb_system
+mysql/innodb_index_stats
+mysql/innodb_table_stats
+mysql/transaction_registry
 SET GLOBAL innodb_file_per_table = ON;
 set global innodb_compression_algorithm = 1;
 create database enctests;
@@ -39,10 +43,6 @@ NAME	ENCRYPTION_SCHEME	CURRENT_KEY_ID
 enctests/t7	0	1
 enctests/t8	0	1
 enctests/t9	0	1
-SET GLOBAL innodb_encrypt_tables=OFF;
-ERROR 42000: Variable 'innodb_encrypt_tables' can't be set to the value of 'OFF'
-SET GLOBAL innodb_encrypt_tables=ON;
-ERROR 42000: Variable 'innodb_encrypt_tables' can't be set to the value of 'ON'
 # t1 default on expecting NOT FOUND
 NOT FOUND /secred/ in t1.ibd
 # t2 default on expecting NOT FOUND
