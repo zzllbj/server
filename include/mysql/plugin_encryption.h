@@ -31,7 +31,7 @@
 extern "C" {
 #endif
 
-#define MariaDB_ENCRYPTION_INTERFACE_VERSION 0x0300
+#define MariaDB_ENCRYPTION_INTERFACE_VERSION 0x0400
 
 /**
   Encryption plugin descriptor
@@ -71,6 +71,13 @@ struct st_mariadb_encryption
   */
   unsigned int (*get_key)(unsigned int key_id, unsigned int version,
                           unsigned char *key, unsigned int *key_length);
+
+  /**
+    function returning can encryption plugin do key rotation
+
+    @return true if plugin can rotate a key, false if not
+  */
+  my_bool (*can_rotate)(void);
 
   /*********** ENCRYPTION ************************************************/
   /*

@@ -59,6 +59,7 @@ struct encryption_service_st {
   unsigned int (*encryption_key_get_latest_version_func)(unsigned int key_id);
   unsigned int (*encryption_key_get_func)(unsigned int key_id, unsigned int key_version,
                                           unsigned char* buffer, unsigned int* length);
+  my_bool (*encryption_can_rotate_func)(void);
   unsigned int (*encryption_ctx_size_func)(unsigned int key_id, unsigned int key_version);
   int (*encryption_ctx_init_func)(void *ctx, const unsigned char* key, unsigned int klen,
                                   const unsigned char* iv, unsigned int ivlen,
@@ -76,6 +77,7 @@ extern struct encryption_service_st *encryption_service;
 
 #define encryption_key_get_latest_version(KI) encryption_service->encryption_key_get_latest_version_func(KI)
 #define encryption_key_get(KI,KV,K,S) encryption_service->encryption_key_get_func((KI),(KV),(K),(S))
+#define encryption_can_rotate() encryption_service->encryption_can_rotate_func()
 #define encryption_ctx_size(KI,KV) encryption_service->encryption_ctx_size_func((KI),(KV))
 #define encryption_ctx_init(CTX,K,KL,IV,IVL,F,KI,KV) encryption_service->encryption_ctx_init_func((CTX),(K),(KL),(IV),(IVL),(F),(KI),(KV))
 #define encryption_ctx_update(CTX,S,SL,D,DL) encryption_service->encryption_ctx_update_func((CTX),(S),(SL),(D),(DL))
@@ -87,6 +89,7 @@ extern struct encryption_service_st encryption_handler;
 
 #define encryption_key_get_latest_version(KI) encryption_handler.encryption_key_get_latest_version_func(KI)
 #define encryption_key_get(KI,KV,K,S) encryption_handler.encryption_key_get_func((KI),(KV),(K),(S))
+#define encryption_can_rotate() encryption_handler.encryption_can_rotate_func()
 #define encryption_ctx_size(KI,KV) encryption_handler.encryption_ctx_size_func((KI),(KV))
 #define encryption_ctx_init(CTX,K,KL,IV,IVL,F,KI,KV) encryption_handler.encryption_ctx_init_func((CTX),(K),(KL),(IV),(IVL),(F),(KI),(KV))
 #define encryption_ctx_update(CTX,S,SL,D,DL) encryption_handler.encryption_ctx_update_func((CTX),(S),(SL),(D),(DL))

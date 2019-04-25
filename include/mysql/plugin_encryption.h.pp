@@ -21,6 +21,7 @@ struct encryption_service_st {
   unsigned int (*encryption_key_get_latest_version_func)(unsigned int key_id);
   unsigned int (*encryption_key_get_func)(unsigned int key_id, unsigned int key_version,
                                           unsigned char* buffer, unsigned int* length);
+  my_bool (*encryption_can_rotate_func)(void);
   unsigned int (*encryption_ctx_size_func)(unsigned int key_id, unsigned int key_version);
   int (*encryption_ctx_init_func)(void *ctx, const unsigned char* key, unsigned int klen,
                                   const unsigned char* iv, unsigned int ivlen,
@@ -527,6 +528,7 @@ struct st_mariadb_encryption
   unsigned int (*get_latest_key_version)(unsigned int key_id);
   unsigned int (*get_key)(unsigned int key_id, unsigned int version,
                           unsigned char *key, unsigned int *key_length);
+  my_bool (*can_rotate)(void);
   unsigned int (*crypt_ctx_size)(unsigned int key_id, unsigned int key_version);
   int (*crypt_ctx_init)(void *ctx, const unsigned char* key, unsigned int klen,
                         const unsigned char* iv, unsigned int ivlen,

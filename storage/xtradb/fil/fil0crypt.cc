@@ -983,9 +983,14 @@ fil_crypt_needs_rotation(
 		return true;
 	}
 
-	/* this is rotation encrypted => encrypted,
-	* only reencrypt if key is sufficiently old */
+	/* This is rotation encrypted => encrypted,
+	only reencrypt if key is sufficiently old.
+	Note that no need to do anything if current and
+	latest key_version are the same. */
 	if (key_version + rotate_key_age < latest_key_version) {
+		/* Note that e.g. on file key management plugin
+		key_version == 1 and rotate_key_age by default is 1
+		and that latest_key_version == 1, thus 1 + 1 !< 1. */
 		return true;
 	}
 
@@ -1527,7 +1532,7 @@ fil_crypt_find_space_to_rotate(
 	/* If key rotation is enabled (default) we iterate all tablespaces.
 	If key rotation is not enabled we iterate only the tablespaces
 	added to keyrotation list. */
-	if (srv_fil_crypt_rotate_key_age) {
+	if (srv_fil_crypt_rotate_key_age && encryption_can_rotate()) {
 		state->space = fil_space_next(state->space);
 	} else {
 		state->space = fil_space_keyrotate_next(state->space);
@@ -1535,6 +1540,10 @@ fil_crypt_find_space_to_rotate(
 
 	while (!state->should_shutdown() && state->space) {
 		fil_crypt_read_crypt_data(state->space);
+
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Investigating tablespace %d:%s from rotation list",
+			state->space->id, state->space->name);
 
 		if (fil_crypt_space_needs_rotation(state, key_state, recheck)) {
 			ut_ad(key_state->key_id);
@@ -1544,7 +1553,7 @@ fil_crypt_find_space_to_rotate(
 			return true;
 		}
 
-		if (srv_fil_crypt_rotate_key_age) {
+		if (srv_fil_crypt_rotate_key_age && encryption_can_rotate()) {
 			state->space = fil_space_next(state->space);
 		} else {
 			state->space = fil_space_keyrotate_next(state->space);
@@ -1635,6 +1644,9 @@ fil_crypt_find_page_to_rotate(
 
 	bool found = crypt_data->rotate_state.max_offset >=
 		crypt_data->rotate_state.next_offset;
+
+	fprintf(stderr, "JAN: trying to find page for rotation from id %d:%s\n",space->id,space->name);
+	fflush(stderr);
 
 	if (found) {
 		state->offset = crypt_data->rotate_state.next_offset;
@@ -2366,8 +2378,52 @@ void
 fil_crypt_set_encrypt_tables(
 	uint val)
 {
-	srv_encrypt_tables = val;
-	os_event_set(fil_crypt_threads_event);
+	/* User has changed the value. If key rotation is disabled or
+	encryption plugin does not support key rotation we need to
+	add all existing tablespaces needing state change to key
+	rotation list. */
+	if (srv_encrypt_tables != val) {
+		srv_encrypt_tables = val;
+		mutex_enter(&fil_system->mutex);
+		fil_space_t* space = UT_LIST_GET_FIRST(fil_system->space_list);
+
+		/* We can trust that space is not NULL because at
+		least the system tablespace is always present and
+		loaded first. */
+		do {
+			/* Skip spaces that are being created by
+			fil_ibd_create(), or dropped, or !tablespace. */
+			if (UT_LIST_GET_LEN(space->chain) != 0
+			    || !space->is_stopping()
+			    || space->purpose == FIL_TABLESPACE) {
+
+				/* If tablespace has not encryption metadata and
+				encryption is enabled or tablespace state should be
+				transfered from encrypted state to unencrypted or
+				from unencrypted to encrypted state and key rotation
+				is either disabled or not supported by encryption
+				plugin add this tablespace to key rotation list to
+				make required state change. */
+				if ((!space->crypt_data && srv_encrypt_tables)
+				    || (space->crypt_data &&
+					(space->crypt_data->should_encrypt()
+					 || space->crypt_data->should_decrypt()))
+				    && (!srv_fil_crypt_rotate_key_age || !encryption_can_rotate())) {
+					ib_logf(IB_LOG_LEVEL_INFO,
+						"Adding tablespace %d:%s to rotation list",
+						space->id, space->name);
+					UT_LIST_ADD_LAST(rotation_list, fil_system->rotation_list, space);
+					space->is_in_rotation_list = true;
+				}
+			}
+		} while(space = UT_LIST_GET_NEXT(space_list, space));
+
+		mutex_exit(&fil_system->mutex);
+
+		/* Notify encryption threads that there could be
+		something to do. */
+		os_event_set(fil_crypt_threads_event);
+	}
 }
 
 /*********************************************************************

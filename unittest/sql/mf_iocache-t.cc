@@ -74,10 +74,16 @@ uint encryption_encrypted_length_func(unsigned int slen, unsigned int key_id, un
   return my_aes_get_size(aes_mode, slen);
 }
 
+my_bool encryption_can_rotate_func()
+{
+  return false;
+}
+
 struct encryption_service_st encryption_handler=
 {
   encryption_key_get_latest_version_func,
   encryption_key_get_func,
+  encryption_can_rotate_func,
   encryption_ctx_size_func,
   encryption_ctx_init_func,
   my_aes_crypt_update,

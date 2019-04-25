@@ -2875,12 +2875,13 @@ int e_ctx_init_func(void *, const uchar*, uint, const uchar*, uint,
 int e_ctx_update_func(void *, const uchar*, uint, uchar*, uint*) { return 1; }
 int e_ctx_finish_func(void *, uchar*, uint*) { return 1; }
 uint e_encrypted_length_func(uint, uint, uint) { return 1; }
-
+my_bool e_can_rotate_func() { return false; }
 uint dummy1() { return 1; }
 struct encryption_service_st encryption_handler=
 {
   e_key_get_latest_version_func,
   e_key_get_func,
+  e_can_rotate_func,
   e_ctx_size_func,
   e_ctx_init_func,
   e_ctx_update_func,

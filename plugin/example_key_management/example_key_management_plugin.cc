@@ -137,10 +137,16 @@ static  uint ctx_size(unsigned int , unsigned int key_version)
   return my_aes_ctx_size(mode(key_version));
 }
 
+static my_bool can_rotate(void)
+{
+  return true;
+}
+
 struct st_mariadb_encryption example_key_management_plugin= {
   MariaDB_ENCRYPTION_INTERFACE_VERSION,
   get_latest_key_version,
   get_key,
+  can_rotate,
   ctx_size,
   ctx_init,
   ctx_update,

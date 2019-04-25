@@ -1,0 +1,128 @@
+--source suite/encryption/include/have_file_key_management_plugin.inc
+--source include/have_innodb.inc
+
+--disable_query_log
+let $innodb_encrypt_tables_orig = `SELECT @@innodb_encrypt_tables`;
+let $innodb_encryption_threads_orig = `SELECT @@innodb_encryption_threads`;
+--enable_query_log
+
+--disable_warnings
+SET GLOBAL innodb_file_format = `Barracuda`;
+SET GLOBAL innodb_encrypt_tables = off;
+SET GLOBAL innodb_encryption_threads = 0;
+--enable_warnings
+
+create table t1(a int not null auto_increment primary key, b char(200)) engine=innodb;
+create table t2(a int not null auto_increment primary key, b char(200)) engine=innodb encrypted=yes;
+create table t3(a int not null auto_increment primary key, b char(200)) engine=innodb encrypted=no;
+
+begin;
+insert into t1 values(NULL, 'testingtestingtesting');
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t1(b) select b from t1;
+insert into t2(b) select b from t1;
+insert into t3(b) select b from t1;
+commit;
+
+SET GLOBAL innodb_encrypt_tables = on;
+SET GLOBAL innodb_encryption_threads = 4;
+
+--echo # Wait max 10 min for key encryption threads to encrypt all spaces
+let $cnt=600;
+while ($cnt)
+{
+    let $success=`SELECT COUNT(*) = 1 FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0`;
+    if ($success)
+    {
+        let $cnt=0;
+    }
+    if (!$success)
+    {
+        real_sleep 1;
+        dec $cnt;
+    }
+}
+if (!$success)
+{
+    SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION;
+    SHOW STATUS LIKE 'innodb_encryption%';
+    -- die Timeout waiting for encryption threads
+}
+--echo # Success!
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+create table t4(a int not null auto_increment primary key, b char(200)) engine=innodb;
+create table t5(a int not null auto_increment primary key, b char(200)) engine=innodb encrypted=yes;
+create table t6(a int not null auto_increment primary key, b char(200)) engine=innodb encrypted=no;
+insert into t4(b) select b from t1;
+insert into t5(b) select b from t1;
+insert into t6(b) select b from t1;
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+SET GLOBAL innodb_encrypt_tables = off;
+
+create table t7(a int not null auto_increment primary key, b char(200)) engine=innodb;
+create table t8(a int not null auto_increment primary key, b char(200)) engine=innodb encrypted=yes;
+create table t9(a int not null auto_increment primary key, b char(200)) engine=innodb encrypted=no;
+insert into t7(b) select b from t1;
+insert into t8(b) select b from t1;
+insert into t9(b) select b from t1;
+
+
+let $cnt=600;
+while ($cnt)
+{
+    let $success=`SELECT COUNT(*) = 4 FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0`;
+    if ($success)
+    {
+        let $cnt=0;
+    }
+    if (!$success)
+    {
+        real_sleep 1;
+        dec $cnt;
+    }
+}
+if (!$success)
+{
+    SELECT * FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION;
+    SHOW STATUS LIKE 'innodb_encryption%';
+    -- die Timeout waiting for encryption threads
+}
+--echo # Success!
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+--let $restart_parameters=--innodb-encrypt-tables=on
+--source include/restart_mysqld.inc
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+--let $restart_parameters=--innodb-encrypt-tables=off
+--source include/restart_mysqld.inc
+
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION = 0;
+SELECT NAME FROM INFORMATION_SCHEMA.INNODB_TABLESPACES_ENCRYPTION WHERE MIN_KEY_VERSION <> 0;
+
+drop table t1,t2,t3,t4,t5,t6,t7,t8,t9;
+

@@ -640,12 +640,17 @@ static unsigned int get_key(
   return(0);
 }
 
+static my_bool can_rotate(void)
+{
+  return true;
+}
 
 /* Plugin defs */
 struct st_mariadb_encryption aws_key_management_plugin= {
   MariaDB_ENCRYPTION_INTERFACE_VERSION,
   get_latest_key_version,
   get_key,
+  can_rotate,
   // use default encrypt/decrypt functions
   0, 0, 0, 0, 0
 };

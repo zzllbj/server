@@ -164,6 +164,13 @@ struct fil_space_crypt_t : st_encryption_scheme
 				encryption == FIL_ENCRYPTION_DEFAULT));
 	}
 
+	/** Returns true if tablespace should be decrypted */
+	bool should_decrypt() const {
+		return (!srv_encrypt_tables
+			&& encryption == FIL_ENCRYPTION_DEFAULT
+			&& type == CRYPT_SCHEME_1);
+	}
+
 	/** Return true if tablespace is encrypted. */
 	bool is_encrypted() const {
 		return (encryption != FIL_ENCRYPTION_OFF);

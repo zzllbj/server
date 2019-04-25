@@ -650,6 +650,25 @@ fil_node_open_file(
 			node->space->crypt_data = fil_space_read_crypt_data(space_id, page, offset);
 		}
 
+		/* If tablespace has not encryption metadata and
+		encryption is enabled or tablespace state should be
+		transfered from encrypted state to unencrypted or
+		from unencrypted to encrypted state and key rotation
+		is either disabled or not supported by encryption
+		plugin add this tablespace to key rotation list to
+		make required state change. */
+		if ((!node->space->crypt_data && srv_encrypt_tables)
+		    || (node->space->crypt_data
+			&& (node->space->crypt_data->should_encrypt()
+			|| node->space->crypt_data->should_decrypt()))
+		    && (!srv_fil_crypt_rotate_key_age || !encryption_can_rotate())) {
+			ib_logf(IB_LOG_LEVEL_INFO,
+				"Adding tablespace %d:%s to rotation list",
+				space->id, space->name);
+			UT_LIST_ADD_LAST(rotation_list, fil_system->rotation_list, node->space);
+			node->space->is_in_rotation_list = true;
+		}
+
 		ut_free(buf2);
 		os_file_close(node->handle);
 
@@ -1416,11 +1435,20 @@ fil_space_create(
 
 	UT_LIST_ADD_LAST(space_list, fil_system->space_list, space);
 
-	/* Inform key rotation that there could be something
-	to do */
-	if (purpose == FIL_TABLESPACE && !srv_fil_crypt_rotate_key_age && fil_crypt_threads_event &&
-	    (mode == FIL_ENCRYPTION_ON || mode == FIL_ENCRYPTION_OFF ||
+	/* If we are creating a tablespace and either rotate_key_age
+	is zero or encryption plugin does not support key rotation
+	and encryption threads have been started and encryption
+	is used, then inform key rotation that there could be something
+	to do. Here state change from no encryption at all to
+	encrypted is a key rotation. */
+	if (purpose == FIL_TABLESPACE
+	    && (!srv_fil_crypt_rotate_key_age || !encryption_can_rotate())
+	    && fil_crypt_threads_event
+		&& (mode == FIL_ENCRYPTION_ON /*|| mode == FIL_ENCRYPTION_OFF*/ ||
 		    srv_encrypt_tables)) {
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Adding tablespace %d:%s to rotation list",
+			space->id, space->name);
 		/* Key rotation is not enabled, need to inform background
 		encryption threads. */
 		UT_LIST_ADD_LAST(rotation_list, fil_system->rotation_list, space);
@@ -6915,6 +6943,9 @@ fil_space_remove_from_keyrotation(
 
 	if (space->n_pending_ops == 0 && space->is_in_rotation_list) {
 		space->is_in_rotation_list = false;
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Removing really space %d:%s from rotation list",
+			space->id,space->name);
 		ut_a(UT_LIST_GET_LEN(fil_system->rotation_list) > 0);
 		UT_LIST_REMOVE(rotation_list, fil_system->rotation_list, space);
 	}
@@ -6939,10 +6970,20 @@ fil_space_keyrotate_next(
 
 	mutex_enter(&fil_system->mutex);
 
-	if (UT_LIST_GET_LEN(fil_system->rotation_list) == 0) {
+	/* Special cases:
+	(1) List is empty, we need to release the last processed space
+	(2) List contains exactly one item and we have already
+	processed this item. To avoid other threads again taking it we
+	remove also it from the list. */
+	if (UT_LIST_GET_LEN(fil_system->rotation_list) == 0
+	    || (space && space == UT_LIST_GET_FIRST(fil_system->rotation_list))) {
 		if (space) {
 			ut_ad(space->n_pending_ops > 0);
 			space->n_pending_ops--;
+			ib_logf(IB_LOG_LEVEL_INFO,
+				"Removing 2 space %d:%s from rotation list pending %d",
+				space->id,space->name, space->n_pending_ops);
+
 			fil_space_remove_from_keyrotation(space);
 		}
 		mutex_exit(&fil_system->mutex);
@@ -6950,6 +6991,8 @@ fil_space_keyrotate_next(
 	}
 
 	if (prev_space == NULL) {
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Starting to iterate key rotation list");
 		space = UT_LIST_GET_FIRST(fil_system->rotation_list);
 
 		/* We can trust that space is not NULL because we
@@ -6963,6 +7006,9 @@ fil_space_keyrotate_next(
 		old = space;
 		space = UT_LIST_GET_NEXT(rotation_list, space);
 
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Removing space %d:%s from rotation list pending %d",
+			old->id,old->name, old->n_pending_ops);
 		fil_space_remove_from_keyrotation(old);
 	}
 
@@ -6971,15 +7017,21 @@ fil_space_keyrotate_next(
 	space->purpose == FIL_TABLESPACE. */
 	while (space != NULL
 		&& (UT_LIST_GET_LEN(space->chain) == 0
-			|| space->is_stopping())) {
+		    || space->is_stopping())) {
 
 		old = space;
 		space = UT_LIST_GET_NEXT(rotation_list, space);
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"Removing space %d:%s from rotation list pending %d",
+			old->id,old->name, old->n_pending_ops);
 		fil_space_remove_from_keyrotation(old);
 	}
 
 	if (space != NULL) {
 		space->n_pending_ops++;
+		ib_logf(IB_LOG_LEVEL_INFO,
+			"New space %d:%s from rotation list pending %d",
+			space->id,space->name, space->n_pending_ops);
 	}
 
 	mutex_exit(&fil_system->mutex);

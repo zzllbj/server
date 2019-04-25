@@ -37,7 +37,10 @@ uint zero_size(uint,uint)
 {
   return 0;
 }
-
+my_bool no_rotation(void)
+{
+  return false;
+}
 static int ctx_init(void *ctx, const unsigned char* key, unsigned int klen,
                     const unsigned char* iv, unsigned int ivlen, int flags,
                     unsigned int key_id, unsigned int key_version)
@@ -98,6 +101,9 @@ int initialize_encryption_plugin(st_plugin_int *plugin)
   encryption_handler.encryption_key_get_func=
     handle->get_key;
 
+  encryption_handler.encryption_can_rotate_func=
+    handle->can_rotate;
+
   encryption_handler.encryption_key_get_latest_version_func=
     handle->get_latest_key_version; // must be the last
 
@@ -113,6 +119,7 @@ int finalize_encryption_plugin(st_plugin_int *plugin)
     encryption_handler.encryption_key_get_func= no_get_key;
     encryption_handler.encryption_key_get_latest_version_func= no_key;
     encryption_handler.encryption_ctx_size_func= zero_size;
+    encryption_handler.encryption_can_rotate_func= no_rotation;
   }
 
   if (plugin && plugin->plugin->deinit && plugin->plugin->deinit(NULL))
