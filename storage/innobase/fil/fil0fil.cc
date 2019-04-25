@@ -1175,8 +1175,9 @@ inline bool fil_space_t::detach()
 	ut_a(magic_n == FIL_SPACE_MAGIC_N);
 	ut_a(n_pending_flushes == 0);
 
-	bool changed = purpose == FIL_TYPE_TABLESPACE && crypt_delist()
-		&& !srv_read_only_mode;
+	bool changed = (purpose == FIL_TYPE_TABLESPACE
+			|| purpose == FIL_TYPE_IMPORT)
+		       && crypt_delist() && !srv_read_only_mode;
 
 	HASH_DELETE(fil_space_t, hash, fil_system.spaces, id, this);
 
@@ -2504,6 +2505,7 @@ fil_delete_tablespace(
 		return(err);
 	}
 
+	ut_a(space->id == id);
 	ut_a(space);
 	ut_a(path != 0);
 
@@ -2530,6 +2532,35 @@ fil_delete_tablespace(
 
 	buf_LRU_flush_or_remove_pages(id, NULL);
 
+	/* If it is a delete then also delete any generated files, otherwise
+	   when we drop the database the remove directory will fail. */
+	{
+		/* Before deleting the file, write a log record about
+		   it, so that InnoDB crash recovery will expect the file
+		   to be gone. */
+		mtr_t           mtr;
+
+		mtr_start(&mtr);
+		fil_op_write_log(MLOG_FILE_DELETE, id, 0, path, NULL, 0, &mtr);
+		mtr_commit(&mtr);
+		/* Even if we got killed shortly after deleting the
+		   tablespace file, the record must have already been
+		   written to the redo log. */
+		log_write_up_to(mtr.commit_lsn(), true);
+
+		char*   cfg_name = fil_make_filepath(path, NULL, CFG, false);
+		if (cfg_name != NULL) {
+			os_file_delete_if_exists(
+				innodb_data_file_key, cfg_name, NULL);
+			ut_free(cfg_name);
+		}
+	}
+
+	/* Delete the link file pointing to the ibd file we are deleting. */
+	if (FSP_FLAGS_HAS_DATA_DIR(space->flags)) {
+		RemoteDatafile::delete_link_file(space->name);
+	}
+
 	mutex_enter(&fil_system.mutex);
 
 	/* Double check the sanity of pending ops after reacquiring
@@ -2555,21 +2586,12 @@ fil_delete_tablespace(
 		log_mutex_exit();
 		fil_space_free_low(space);
 
-		/* Before deleting the file, write a log record about
-		it, so that InnoDB crash recovery will expect the file
-		to be gone. */
-
-		mtr_t mtr;
-		mtr.start();
-		fil_op_write_log(MLOG_FILE_DELETE, id, 0, path, NULL, 0, &mtr);
 		if (changed) {
+			mtr_t	mtr;
+			mtr.start();
 			dict_hdr_crypt_status_update(&mtr, st);
+			mtr.commit();
 		}
-		mtr.commit();
-		/* Even if we got killed shortly after deleting the
-		tablespace file, the record must have already been
-		written to the redo log. */
-		log_write_up_to(mtr.commit_lsn(), true);
 
 		if (!os_file_delete(innodb_data_file_key, path)
 		    && !os_file_delete_if_exists(
@@ -2583,16 +2605,6 @@ fil_delete_tablespace(
 	} else {
 		mutex_exit(&fil_system.mutex);
 		err = DB_TABLESPACE_NOT_FOUND;
-	}
-
-	if (char* cfg_name = fil_make_filepath(path, NULL, CFG, false)) {
-		os_file_delete_if_exists(innodb_data_file_key, cfg_name, NULL);
-		ut_free(cfg_name);
-	}
-
-	/* Delete the link file pointing to the ibd file we are deleting. */
-	if (FSP_FLAGS_HAS_DATA_DIR(space->flags)) {
-		RemoteDatafile::delete_link_file(space->name);
 	}
 
 	ut_free(path);
