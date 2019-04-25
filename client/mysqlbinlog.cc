@@ -234,8 +234,7 @@ bool print_annotate_event(PRINT_EVENT_INFO *print_event_info)
   if (annotate_event)
   {
     error= annotate_event->print(result_file, print_event_info);
-    delete annotate_event;  // the event should not be printed more than once
-    annotate_event= 0;
+    free_annotate_event();
   }
   return error;
 }
@@ -1553,8 +1552,6 @@ end:
       }
     }
 
-    if (remote_opt)
-      ev->temp_buf= 0;
     if (destroy_evt) /* destroy it later if not set (ignored table map) */
       delete ev;
   }
