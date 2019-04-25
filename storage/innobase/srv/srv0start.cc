@@ -678,6 +678,7 @@ static bool srv_undo_tablespace_open(const char* name, ulint space_id,
 	if (create_new_db) {
 		space->size = file->size = ulint(size >> srv_page_size_shift);
 		space->size_in_header = SRV_UNDO_TABLESPACE_SIZE_IN_PAGES;
+		space->crypt_enlist();
 	} else {
 		success = file->read_page0(true);
 		if (!success) {
@@ -1585,6 +1586,10 @@ dberr_t srv_start(bool create_new_db)
 		/* Other errors might come from Datafile::validate_first_page() */
 		return(srv_init_abort(err));
 	}
+
+	mutex_enter(&fil_system.mutex);
+	fil_system.sys_space->crypt_enlist();
+	mutex_exit(&fil_system.mutex);
 
 	dirnamelen = strlen(srv_log_group_home_dir);
 	ut_a(dirnamelen < (sizeof logfilename) - 10 - sizeof "ib_logfile");

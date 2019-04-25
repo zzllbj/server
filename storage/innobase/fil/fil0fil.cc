@@ -572,6 +572,11 @@ invalid:
 		space->crypt_data = fil_space_read_crypt_data(
 			fil_space_t::zip_size(flags), page);
 	}
+
+	if (first) {
+		space->crypt_enlist();
+	}
+
 	ut_free(buf2);
 
 	if (UNIV_UNLIKELY(space_id != space->id)) {
@@ -1210,6 +1215,11 @@ fil_space_detach(
 {
 	ut_ad(mutex_own(&fil_system.mutex));
 
+	if (space->purpose == FIL_TYPE_TABLESPACE
+	    || space->purpose == FIL_TYPE_IMPORT) {
+		space->crypt_delist();
+	}
+
 	HASH_DELETE(fil_space_t, hash, fil_system.spaces, space->id, space);
 
 	if (space->is_in_unflushed_spaces()) {
@@ -1429,6 +1439,10 @@ fil_space_create(
 	if (id < SRV_LOG_SPACE_FIRST_ID && id > fil_system.max_assigned_id) {
 
 		fil_system.max_assigned_id = id;
+	}
+
+	if (crypt_data) {
+		space->crypt_enlist();
 	}
 
 	/* Inform key rotation that there could be something
@@ -3161,6 +3175,12 @@ err_exit:
 
 		file->block_size = block_size;
 		space->punch_hole = punch_hole;
+
+		if (space->purpose == FIL_TYPE_TABLESPACE && !crypt_data) {
+			mutex_enter(&fil_system.mutex);
+			space->crypt_enlist();
+			mutex_exit(&fil_system.mutex);
+		}
 
 		*err = DB_SUCCESS;
 	}
@@ -5226,8 +5246,7 @@ fil_node_should_punch_hole(
 	return (node->space->punch_hole);
 }
 
-/**
-Set punch hole to tablespace to given value.
+/** Set punch hole to tablespace to given value.
 @param[in]	node		File node
 @param[in]	val		value to be set. */
 void
@@ -5238,20 +5257,108 @@ fil_space_set_punch_hole(
 	node->space->punch_hole = val;
 }
 
-/** Checks that this tablespace in a list of unflushed tablespaces.
-@return true if in a list */
-bool fil_space_t::is_in_unflushed_spaces() const {
-	ut_ad(mutex_own(&fil_system.mutex));
+/** Set the encryption status of all tablespaces after
+unencrypted spaces or encrypted spaces has been changed.
+@param[in]	encrypted	whether the tablespace is encrypted
+@param[in]	remove		whether the tablespace is being removed. */
+inline void fil_system_t::crypt_update(bool encrypted, bool remove)
+{
+	ut_ad(is_initialised());
+	ut_ad(this == &fil_system);
 
-	return fil_system.unflushed_spaces.start == this
-	       || unflushed_spaces.next || unflushed_spaces.prev;
+	if (srv_read_only_mode) {
+		return;
+	}
+
+	ut_ad(mutex_own(&mutex));
+	ut_ad(srv_operation == SRV_OPERATION_NORMAL);
+
+	crypt_status_t status = crypt_status;
+
+	switch (status) {
+	case CRYPT_ENCRYPTED:
+		if (!remove && !encrypted) {
+			status = CRYPT_MIXED;
+		}
+		break;
+	case CRYPT_DECRYPTED:
+		if (!remove && encrypted) {
+			status = CRYPT_MIXED;
+		}
+		break;
+	case CRYPT_MIXED:
+		ulint n_encrypted = UT_LIST_GET_LEN(encrypted_spaces);
+		ulint n_unencrypted = UT_LIST_GET_LEN(unencrypted_spaces);
+		/* Space list include redo log and temp spaces,
+		which are not part of key rotation. */
+		DBUG_ASSERT(UT_LIST_GET_LEN(space_list) >= 2);
+		ulint n_total = UT_LIST_GET_LEN(space_list)
+					- (1 + !!(temp_space));
+		DBUG_ASSERT(n_total + !temp_space
+			    >= n_encrypted + n_unencrypted);
+
+		if (n_total == n_encrypted) {
+			status = CRYPT_ENCRYPTED;
+		} else if (n_total == n_unencrypted) {
+			status = CRYPT_DECRYPTED;
+		}
+	}
+
+	crypt_status = status;
 }
 
-/** Checks that this tablespace needs key rotation.
-@return true if in a rotation list */
-bool fil_space_t::is_in_rotation_list() const {
+/** Add space to encrypted or unencrypted list. */
+void fil_space_t::crypt_enlist()
+{
 	ut_ad(mutex_own(&fil_system.mutex));
 
-	return fil_system.rotation_list.start == this || rotation_list.next
-	       || rotation_list.prev;
+	if (srv_operation != SRV_OPERATION_NORMAL) {
+		return;
+	}
+
+	if (!crypt_data || !crypt_data->min_key_version) {
+		if (add_if_not_in_unencrypted_spaces()) {
+			remove_if_in_encrypted_spaces();
+			fil_system.crypt_update(false, false);
+		}
+	} else {
+		if (add_if_not_in_encrypted_spaces()) {
+			remove_if_in_unencrypted_spaces();
+			fil_system.crypt_update(true, false);
+		}
+	}
+}
+
+/** Remove the space from encrypted or unencrypted list. */
+inline void fil_space_t::crypt_delist()
+{
+	if (srv_operation != SRV_OPERATION_NORMAL) {
+		return;
+	}
+
+	if (remove_if_in_encrypted_spaces()) {
+		ut_ad(!is_in_unencrypted_spaces());
+
+		if (srv_shutdown_state == SRV_SHUTDOWN_LAST_PHASE) {
+			return;
+		}
+
+		ut_ad(fil_system.crypt_status
+				!= fil_system_t::CRYPT_DECRYPTED);
+		return fil_system.crypt_update(true, true);
+	}
+
+	if (remove_if_in_unencrypted_spaces()) {
+		ut_ad(!is_in_unencrypted_spaces());
+
+		if (srv_shutdown_state == SRV_SHUTDOWN_LAST_PHASE) {
+			return;
+		}
+
+		ut_ad(fil_system.crypt_status
+				!= fil_system_t::CRYPT_ENCRYPTED);
+		return fil_system.crypt_update(false, true);
+	}
+
+	ut_ad(size == 0);
 }

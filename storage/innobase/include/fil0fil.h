@@ -150,16 +150,16 @@ struct fil_space_t {
 	UT_LIST_NODE_T(fil_space_t) named_spaces;
 				/*!< list of spaces for which MLOG_FILE_NAME
 				records have been issued */
-	/** Checks that this tablespace in a list of unflushed tablespaces.
-	@return true if in a list */
-	bool is_in_unflushed_spaces() const;
 	UT_LIST_NODE_T(fil_space_t) space_list;
 				/*!< list of all spaces */
 	/** other tablespaces needing key rotation */
 	UT_LIST_NODE_T(fil_space_t) rotation_list;
-	/** Checks that this tablespace needs key rotation.
-	@return true if in a rotation list */
-	bool is_in_rotation_list() const;
+
+	/** List of all encrypted spaces. Protected by fil_system.mutex. */
+	UT_LIST_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** List of all unencrypted spaces. Protected by fil_system.mutex. */
+	UT_LIST_NODE_T(fil_space_t) unencrypted_spaces;
 
 	/** MariaDB encryption data */
 	fil_space_crypt_t* crypt_data;
@@ -241,7 +241,34 @@ struct fil_space_t {
 	bool open();
 	/** Close each file. Only invoked on fil_system.temp_space. */
 	void close();
+	/** Add the space to encrypted or unencrypted list.*/
+	void crypt_enlist();
+	/** Remove the space from encrypted or unencrypted list. */
+	void crypt_delist();
 
+	/** @return whether this is in fil_system.rotation list */
+	bool is_in_rotation_list() const;
+	/** @return whether this is in fil_system.unflushed_spaces */
+	inline bool is_in_unflushed_spaces() const;
+	/** @return whether this is in fil_system.encrypted_spaces */
+	inline bool is_in_encrypted_spaces() const;
+	/** @return whether this is in fil_system.unencrypted_spaces */
+	inline bool is_in_unencrypted_spaces() const;
+
+private:
+	/** Remove this from fil_system.encrypted_spaces if listed.
+	@return whether this tablespace was listed and removed */
+	inline bool remove_if_in_encrypted_spaces();
+	/** Remove this from fil_system.unencrypted_spaces if listed.
+	@return whether this tablespace was listed and removed */
+	inline bool remove_if_in_unencrypted_spaces();
+	/** Add this to fil_system.encrypted_spaces if not listed.
+	@return whether we added this tablespace */
+	inline bool add_if_not_in_encrypted_spaces();
+	/** Add this to fil_system.unencrypted_spaces if not listed.
+	@return whether we added this tablespace */
+	inline bool add_if_not_in_unencrypted_spaces();
+public:
 	/** Acquire a tablespace reference. */
 	void acquire() { n_pending_ops++; }
 	/** Release a tablespace reference. */
@@ -837,6 +864,9 @@ struct fil_system_t {
     UT_LIST_INIT(rotation_list, &fil_space_t::rotation_list);
     UT_LIST_INIT(unflushed_spaces, &fil_space_t::unflushed_spaces);
     UT_LIST_INIT(named_spaces, &fil_space_t::named_spaces);
+    UT_LIST_INIT(encrypted_spaces, &fil_space_t::encrypted_spaces);
+    UT_LIST_INIT(unencrypted_spaces, &fil_space_t::unencrypted_spaces);
+    crypt_status = CRYPT_DECRYPTED;
   }
 
   bool is_initialised() const { return m_initialised; }
@@ -850,6 +880,14 @@ struct fil_system_t {
 
   /** Close the file system interface at shutdown */
   void close();
+
+  /**
+    Set the encryption status of all tablespaces after
+    unencrypted_spaces or encrypted_spaces has been changed.
+
+    @param[in]	encrypted	whether the tablespace is encrypted
+    @param[in]	remove		whether the tablespace is being removed. */
+  inline void crypt_update(bool encrypted, bool remove);
 
 private:
   bool m_initialised;
@@ -895,15 +933,110 @@ public:
 	UT_LIST_BASE_NODE_T(fil_space_t) rotation_list;
 					/*!< list of all file spaces needing
 					key rotation.*/
+	/** List of all encrypted spaces */
+	UT_LIST_BASE_NODE_T(fil_space_t) encrypted_spaces;
+
+	/** List of all unencrypted spaces */
+	UT_LIST_BASE_NODE_T(fil_space_t) unencrypted_spaces;
 
 	bool		space_id_reuse_warned;
 					/*!< whether fil_space_create()
 					has issued a warning about
 					potential space_id reuse */
+
+	/** Global encryption status. */
+	enum crypt_status_t {
+		/** All tablespaces are in encrypted state */
+		CRYPT_ENCRYPTED = 8,
+		/** All tablespaces are in unencrypted state */
+		CRYPT_DECRYPTED,
+		/** Some are unencrypted, some are encrypted */
+		CRYPT_MIXED
+	} crypt_status;
+
+	/** @return whether crypt_status has reached a stable state */
+	bool is_stable_crypt_status(bool encrypted)
+	{
+		mutex_enter(&mutex);
+		bool stable = crypt_status == (encrypted
+					       ? CRYPT_ENCRYPTED
+					       : CRYPT_DECRYPTED);
+		mutex_exit(&mutex);
+
+		return stable;
+	}
 };
 
 /** The tablespace memory cache. */
 extern fil_system_t	fil_system;
+
+/** @return whether this is in fil_system.unflushed_spaces */
+inline bool fil_space_t::is_in_unflushed_spaces() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.unflushed_spaces.start == this
+		|| unflushed_spaces.next || unflushed_spaces.prev;
+}
+
+/** @return whether this is in fil_system.rotation_list */
+inline bool fil_space_t::is_in_rotation_list() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.rotation_list.start == this
+		|| rotation_list.next || rotation_list.prev;
+}
+
+/** @return whether this is in fil_system.encrypted_spaces */
+inline bool fil_space_t::is_in_encrypted_spaces() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.encrypted_spaces.start == this
+		|| encrypted_spaces.next || encrypted_spaces.prev;
+}
+
+/** @return whether this is in fil_system.unencrypted_spaces */
+inline bool fil_space_t::is_in_unencrypted_spaces() const
+{
+	ut_ad(mutex_own(&fil_system.mutex));
+	return fil_system.unencrypted_spaces.start == this
+		|| unencrypted_spaces.next || unencrypted_spaces.prev;
+}
+
+/** Remove this from fil_system.encrypted_spaces if listed.
+  @return whether this tablespace was listed and removed */
+inline bool fil_space_t::remove_if_in_encrypted_spaces()
+{
+	bool remove = is_in_encrypted_spaces();
+	if (remove) UT_LIST_REMOVE(fil_system.encrypted_spaces, this);
+	return remove;
+}
+
+/** Remove this from fil_system.unencrypted_spaces if listed.
+  @return whether this tablespace was listed and removed */
+inline bool fil_space_t::remove_if_in_unencrypted_spaces()
+{
+	bool remove = is_in_unencrypted_spaces();
+	if (remove) UT_LIST_REMOVE(fil_system.unencrypted_spaces, this);
+	return remove;
+}
+
+/** Add this to fil_system.encrypted_spaces if not listed.
+  @return whether we added this tablespace */
+inline bool fil_space_t::add_if_not_in_encrypted_spaces()
+{
+	bool add = !is_in_encrypted_spaces();
+	if (add) UT_LIST_ADD_LAST(fil_system.encrypted_spaces, this);
+	return add;
+}
+
+/** Remove this from fil_system.unencrypted_spaces if listed.
+  @return whether we added this tablespace */
+inline bool fil_space_t::add_if_not_in_unencrypted_spaces()
+{
+	bool add = !is_in_unencrypted_spaces();
+	if (add) UT_LIST_ADD_LAST(fil_system.unencrypted_spaces, this);
+	return add;
+}
 
 #include "fil0crypt.h"
 
